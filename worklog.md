@@ -1,22 +1,27 @@
 ---
 Task ID: 1
-Agent: Main
-Task: Verify and ensure OpenCode Zen is fully integrated across all components
+Agent: Main Agent
+Task: Fix OpenCode Zen model IDs - "Model opencode/big-pickle is not supported" error
 
 Work Log:
-- Restarted dev server (was crashed from previous session)
-- Verified OpenCode Zen in src/lib/llm.ts - PROVIDER_CONFIGS has 'opencode' key with baseUrl, 13 models, testModel, chatPath, extraHeaders
-- Verified OpenCode Zen in src/store/index.ts - Store uses generic Record<string, string> for settings, compatible with opencode provider
-- Verified OpenCode Zen in src/components/codeforge/SettingsModal.tsx - PROVIDERS object includes opencode with 🧘 icon, keyHint, handleProviderChange sets default model to 'opencode/big-pickle'
-- Verified OpenCode Zen in src/components/codeforge/ApiKeyGuide.tsx - PROVIDER_GUIDES has full opencode entry with steps, pricing, freeCredits, bestModels, tip; QuickProviderCards includes opencode with "FREE CODING" badge
-- Verified OpenCode Zen in src/components/codeforge/OnboardingWizard.tsx - PROVIDERS includes opencode, handleProviderChange handles 'opencode' → sets model to 'opencode/big-pickle', Step2ApiKey uses QuickProviderCards
-- Verified OpenCode Zen in src/app/api/models/route.ts - STATIC_MODELS has 'opencode' key with 13 models including isFree flags for Big Pickle and MiMo V2 Pro
-- Ran lint check - passes cleanly with no errors
-- Dev server starts and serves pages correctly (HTTP 200)
+- Fetched actual model list from https://opencode.ai/zen/v1/models API
+- Discovered all model IDs use NO prefix (e.g., `big-pickle` not `opencode/big-pickle`)
+- Updated `src/lib/llm.ts` PROVIDER_CONFIGS: removed `opencode/` prefix from all 14 model IDs
+- Updated `src/lib/llm.ts` testModel from `opencode/big-pickle` to `big-pickle`
+- Added OpenCode Zen-specific test connection using models listing endpoint
+- Rewrote `src/app/api/models/route.ts`: now dynamically fetches from OpenCode Zen `/v1/models` API
+- Added proper free/paid classification based on `-free` suffix and known free IDs
+- Added friendly display names mapping (OPENCODE_DISPLAY_NAMES) for all 46+ models
+- Updated `src/components/codeforge/SettingsModal.tsx`: default model `big-pickle`, label "Free & paid models"
+- Updated `src/components/codeforge/OnboardingWizard.tsx`: default model `big-pickle`, label "Free & paid models"
+- Updated `src/components/codeforge/ApiKeyGuide.tsx`: corrected model names, pricing info, and badges
+- Updated `src/components/codeforge/ChatPanel.tsx`: fixed free models group label to "🆓 Free Models"
+- Verified API returns correct model data with real IDs from OpenCode Zen
+- Lint check passes with no errors
 
 Stage Summary:
-- OpenCode Zen is FULLY INTEGRATED across all components (was added in previous session)
-- All 7 verification points pass
-- Lint check: CLEAN (no errors)
-- App renders correctly on port 3000
-- Known issue: Dev server crashes intermittently in sandbox environment (needs supervisor)
+- Root cause: Model IDs were using `opencode/` prefix which OpenCode Zen API doesn't recognize
+- Fix: Use actual model IDs from the API (e.g., `big-pickle`, `deepseek-v4-flash-free`, `claude-sonnet-4`)
+- Models API now dynamically fetches from OpenCode Zen for always up-to-date model list
+- Free models: big-pickle, deepseek-v4-flash-free, mimo-v2.5-free, qwen3.6-plus-free, minimax-m3-free, nemotron-3-super-free
+- All paid models properly marked as isFree: false

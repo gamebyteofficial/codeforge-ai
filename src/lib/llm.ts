@@ -108,21 +108,24 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     name: 'OpenCode Zen',
     baseUrl: 'https://opencode.ai/zen/v1',
     models: [
-      'opencode/big-pickle',
-      'opencode/minimax-m2.1-free',
-      'opencode/glm-4.7-free',
-      'opencode/kimi-k2.5-free',
-      'opencode/deepseek-v4-flash-free',
-      'opencode/nemotron-3-super-free',
-      'opencode/kimi-k2.6',
-      'opencode/qwen3.6-plus',
-      'opencode/claude-sonnet-4',
-      'opencode/claude-opus-4',
-      'opencode/gpt-5',
-      'opencode/gpt-5-mini',
-      'opencode/gemini-2.5-pro',
+      // Free models
+      'big-pickle',
+      'deepseek-v4-flash-free',
+      'mimo-v2.5-free',
+      'qwen3.6-plus-free',
+      'minimax-m3-free',
+      'nemotron-3-super-free',
+      // Paid models
+      'kimi-k2.6',
+      'kimi-k2.5',
+      'qwen3.6-plus',
+      'claude-sonnet-4',
+      'claude-opus-4',
+      'gpt-5',
+      'gpt-5.1-codex',
+      'gemini-3.5-flash',
     ],
-    testModel: 'opencode/big-pickle',
+    testModel: 'big-pickle',
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {
@@ -637,6 +640,28 @@ export async function testProviderConnection(
       }
       const errorData = await modelsResponse.text();
       let errorMsg = `OpenRouter API key validation failed (${modelsResponse.status})`;
+      try {
+        const parsed = JSON.parse(errorData);
+        errorMsg = parsed.error?.message || parsed.error?.code || parsed.message || errorMsg;
+      } catch {}
+      return { success: false, error: errorMsg };
+    }
+
+    // OpenCode Zen: validate API key by listing models
+    if (provider === 'opencode') {
+      const modelsUrl = `${config.baseUrl}/models`;
+      const modelsResponse = await fetch(modelsUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...config.extraHeaders,
+        },
+      });
+      if (modelsResponse.ok) {
+        return { success: true };
+      }
+      const errorData = await modelsResponse.text();
+      let errorMsg = `OpenCode Zen API key validation failed (${modelsResponse.status})`;
       try {
         const parsed = JSON.parse(errorData);
         errorMsg = parsed.error?.message || parsed.error?.code || parsed.message || errorMsg;

@@ -35,23 +35,6 @@ const STATIC_MODELS: Record<string, { id: string; name: string }[]> = {
     { id: 'mistral-medium-latest', name: 'Mistral Medium' },
     { id: 'codestral-latest', name: 'Codestral' },
   ],
-  opencode: [
-    // Free models
-    { id: 'opencode/big-pickle', name: 'Big Pickle', isFree: true },
-    { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1 Free', isFree: true },
-    { id: 'opencode/glm-4.7-free', name: 'GLM 4.7 Free', isFree: true },
-    { id: 'opencode/kimi-k2.5-free', name: 'Kimi K2.5 Free', isFree: true },
-    { id: 'opencode/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', isFree: true },
-    { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', isFree: true },
-    // Paid models
-    { id: 'opencode/kimi-k2.6', name: 'Kimi K2.6', isFree: false },
-    { id: 'opencode/qwen3.6-plus', name: 'Qwen3.6 Plus', isFree: false },
-    { id: 'opencode/claude-sonnet-4', name: 'Claude Sonnet 4', isFree: false },
-    { id: 'opencode/claude-opus-4', name: 'Claude Opus 4', isFree: false },
-    { id: 'opencode/gpt-5', name: 'GPT-5', isFree: false },
-    { id: 'opencode/gpt-5-mini', name: 'GPT-5 Mini', isFree: false },
-    { id: 'opencode/gemini-2.5-pro', name: 'Gemini 2.5 Pro', isFree: false },
-  ],
 };
 
 // ─── Response Model Type ───────────────────────────────────────────────────────
@@ -63,6 +46,99 @@ interface ModelEntry {
   pricing?: { prompt: string; completion: string };
   contextLength?: number;
   isFree: boolean;
+}
+
+// ─── OpenCode Zen Models Fetcher ───────────────────────────────────────────────
+
+// Known free model IDs from OpenCode Zen (models with -free suffix + big-pickle)
+const OPENCODE_FREE_IDS = new Set([
+  'big-pickle',
+  'deepseek-v4-flash-free',
+  'mimo-v2.5-free',
+  'qwen3.6-plus-free',
+  'minimax-m3-free',
+  'nemotron-3-super-free',
+]);
+
+// Friendly display names for OpenCode Zen models
+const OPENCODE_DISPLAY_NAMES: Record<string, string> = {
+  'big-pickle': 'Big Pickle',
+  'deepseek-v4-flash-free': 'DeepSeek V4 Flash Free',
+  'deepseek-v4-flash': 'DeepSeek V4 Flash',
+  'mimo-v2.5-free': 'MiMo V2.5 Free',
+  'qwen3.6-plus-free': 'Qwen3.6 Plus Free',
+  'qwen3.6-plus': 'Qwen3.6 Plus',
+  'qwen3.5-plus': 'Qwen3.5 Plus',
+  'minimax-m3-free': 'MiniMax M3 Free',
+  'minimax-m2.7': 'MiniMax M2.7',
+  'minimax-m2.5': 'MiniMax M2.5',
+  'nemotron-3-super-free': 'Nemotron 3 Super Free',
+  'kimi-k2.6': 'Kimi K2.6',
+  'kimi-k2.5': 'Kimi K2.5',
+  'glm-5.1': 'GLM 5.1',
+  'glm-5': 'GLM 5',
+  'claude-sonnet-4': 'Claude Sonnet 4',
+  'claude-sonnet-4-5': 'Claude Sonnet 4.5',
+  'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+  'claude-opus-4': 'Claude Opus 4',
+  'claude-opus-4-1': 'Claude Opus 4.1',
+  'claude-opus-4-5': 'Claude Opus 4.5',
+  'claude-opus-4-6': 'Claude Opus 4.6',
+  'claude-opus-4-7': 'Claude Opus 4.7',
+  'claude-opus-4-8': 'Claude Opus 4.8',
+  'claude-haiku-4-5': 'Claude Haiku 4.5',
+  'gpt-5': 'GPT-5',
+  'gpt-5-nano': 'GPT-5 Nano',
+  'gpt-5-codex': 'GPT-5 Codex',
+  'gpt-5.1': 'GPT-5.1',
+  'gpt-5.1-codex': 'GPT-5.1 Codex',
+  'gpt-5.1-codex-max': 'GPT-5.1 Codex Max',
+  'gpt-5.1-codex-mini': 'GPT-5.1 Codex Mini',
+  'gpt-5.2': 'GPT-5.2',
+  'gpt-5.2-codex': 'GPT-5.2 Codex',
+  'gpt-5.3-codex': 'GPT-5.3 Codex',
+  'gpt-5.3-codex-spark': 'GPT-5.3 Codex Spark',
+  'gpt-5.4': 'GPT-5.4',
+  'gpt-5.4-pro': 'GPT-5.4 Pro',
+  'gpt-5.4-mini': 'GPT-5.4 Mini',
+  'gpt-5.4-nano': 'GPT-5.4 Nano',
+  'gpt-5.5': 'GPT-5.5',
+  'gpt-5.5-pro': 'GPT-5.5 Pro',
+  'gemini-3-flash': 'Gemini 3 Flash',
+  'gemini-3.5-flash': 'Gemini 3.5 Flash',
+  'gemini-3.1-pro': 'Gemini 3.1 Pro',
+  'grok-build-0.1': 'Grok Build 0.1',
+};
+
+async function fetchOpenCodeModels(): Promise<ModelEntry[]> {
+  const response = await fetch('https://opencode.ai/zen/v1/models', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    next: { revalidate: 300 }, // Cache for 5 minutes
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenCode Zen API returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawModels: { id: string; object: string; owned_by: string }[] = data.data || [];
+
+  // Map to our ModelEntry format with free/paid classification
+  const models: ModelEntry[] = rawModels.map((m) => ({
+    id: m.id,
+    name: OPENCODE_DISPLAY_NAMES[m.id] || m.id,
+    provider: 'opencode',
+    isFree: OPENCODE_FREE_IDS.has(m.id) || m.id.endsWith('-free'),
+  }));
+
+  // Sort: free models first, then paid models alphabetically
+  const freeModels = models.filter((m) => m.isFree).sort((a, b) => a.name.localeCompare(b.name));
+  const paidModels = models.filter((m) => !m.isFree).sort((a, b) => a.name.localeCompare(b.name));
+
+  return [...freeModels, ...paidModels];
 }
 
 // ─── OpenRouter Models Fetcher ─────────────────────────────────────────────────
@@ -157,7 +233,7 @@ function buildStaticModels(provider: string): ModelEntry[] {
     id: m.id,
     name: m.name,
     provider,
-    isFree: (m as { isFree?: boolean }).isFree ?? false,
+    isFree: false,
   }));
 }
 
@@ -193,6 +269,25 @@ export async function GET() {
             contextLength: 128000,
             isFree: true,
           },
+        ];
+      }
+    } else if (provider === 'opencode') {
+      // OpenCode Zen: Dynamic fetch from API
+      try {
+        models = await fetchOpenCodeModels();
+      } catch (fetchError) {
+        console.error('Failed to fetch OpenCode Zen models:', fetchError);
+        // Fallback: return a minimal list with big-pickle
+        models = [
+          { id: 'big-pickle', name: 'Big Pickle', provider: 'opencode', isFree: true },
+          { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', provider: 'opencode', isFree: true },
+          { id: 'nemotron-3-super-free', name: 'Nemotron 3 Super Free', provider: 'opencode', isFree: true },
+          { id: 'mimo-v2.5-free', name: 'MiMo V2.5 Free', provider: 'opencode', isFree: true },
+          { id: 'qwen3.6-plus-free', name: 'Qwen3.6 Plus Free', provider: 'opencode', isFree: true },
+          { id: 'minimax-m3-free', name: 'MiniMax M3 Free', provider: 'opencode', isFree: true },
+          { id: 'kimi-k2.6', name: 'Kimi K2.6', provider: 'opencode', isFree: false },
+          { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', provider: 'opencode', isFree: false },
+          { id: 'gpt-5', name: 'GPT-5', provider: 'opencode', isFree: false },
         ];
       }
     } else {

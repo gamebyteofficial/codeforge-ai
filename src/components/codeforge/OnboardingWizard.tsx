@@ -158,7 +158,7 @@ export default function OnboardingWizard() {
     if (key === 'openrouter') {
       setModel('openrouter/auto');
     } else if (key === 'opencode') {
-      setModel('opencode/big-pickle');
+      setModel('big-pickle');
     } else {
       setModel('');
     }
@@ -583,7 +583,7 @@ function Step2ApiKey({
           <span className="text-xs text-zinc-500">
             Active: {PROVIDERS[provider].name}
             {provider === 'openrouter' && ' (Recommended — supports all models)'}
-            {provider === 'opencode' && ' (6 free models + premium)'}
+            {provider === 'opencode' && ' (Free & paid models)'}
           </span>
         </div>
       </div>

@@ -156,14 +156,14 @@ const PROVIDER_GUIDES: Record<ProviderKey, ProviderGuide> = {
     getUrlLabel: 'opencode.ai/zen',
     steps: [
       'Go to opencode.ai/zen and create an account',
-      '6 free models available including Big Pickle & DeepSeek V4 Flash!',
+      'Free models available: Big Pickle, DeepSeek V4 Flash Free & more!',
       'Navigate to your API Keys',
       'Copy the key and paste it here',
     ],
-    pricing: '6 models FREE (no credit card needed). Paid models: Claude Sonnet 4, GPT-5, Gemini 2.5 Pro & more',
-    freeCredits: 'Big Pickle, MiniMax M2.1, GLM 4.7, Kimi K2.5, DeepSeek V4 Flash & Nemotron 3 Super are FREE!',
-    bestModels: ['Big Pickle (FREE — 355B params, great for coding)', 'DeepSeek V4 Flash Free (FREE)', 'Claude Sonnet 4 (Paid — Most capable)', 'GPT-5 (Paid — Latest OpenAI)', 'Gemini 2.5 Pro (Paid)'],
-    tip: 'Big Pickle & DeepSeek V4 Flash are powerful free models — perfect for coding! Nemotron 3 Super Free availability may change.',
+    pricing: '6 models FREE (no credit card). Paid models: Claude Sonnet/Opus 4, GPT-5.x, Gemini 3.x & more',
+    freeCredits: 'Big Pickle, DeepSeek V4 Flash Free, MiMo V2.5 Free, Qwen3.6 Plus Free, MiniMax M3 Free & Nemotron 3 Super Free!',
+    bestModels: ['Big Pickle (FREE — great for coding)', 'DeepSeek V4 Flash Free (FREE)', 'Claude Sonnet 4 (Paid)', 'GPT-5 (Paid)', 'Gemini 3.5 Flash (Paid)'],
+    tip: 'Big Pickle is a powerful free model — perfect for coding! Free model availability may change over time.',
   },
 };
 
@@ -292,7 +292,7 @@ interface QuickProviderCardsProps {
 export function QuickProviderCards({ onSelect, selected }: QuickProviderCardsProps) {
   const recommendedProviders: { key: ProviderKey; reason: string }[] = [
     { key: 'openrouter', reason: 'Access ALL models with one key' },
-    { key: 'opencode', reason: '6 free models + premium (Claude, GPT-5)' },
+    { key: 'opencode', reason: 'Free models + premium (Claude, GPT-5)' },
     { key: 'deepseek', reason: 'Cheapest paid option' },
     { key: 'gemini', reason: 'Generous free tier' },
   ];
@@ -327,7 +327,7 @@ export function QuickProviderCards({ onSelect, selected }: QuickProviderCardsPro
                   )}
                   {key === 'opencode' && (
                     <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
-                      6 FREE
+                      FREE MODELS
                     </span>
                   )}
                   {key === 'deepseek' && (

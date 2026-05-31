@@ -446,7 +446,7 @@ function ModelSelector({
         const paid = filteredModels.filter((m) => !m.isFree);
         const groups: Record<string, DynamicModel[]> = {};
         if (auto.length) groups['⚡ Auto-Routing'] = auto;
-        if (free.length) groups[provider === 'opencode' ? '🆓 All Models FREE' : '🆓 Free Models'] = free;
+        if (free.length) groups['🆓 Free Models'] = free;
         if (paid.length) groups['💎 Paid Models'] = paid;
         return groups;
       })()

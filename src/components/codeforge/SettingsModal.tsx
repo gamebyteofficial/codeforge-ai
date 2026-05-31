@@ -221,7 +221,7 @@ export default function SettingsModal() {
     const defaultModel = provider === 'openrouter'
       ? 'openrouter/auto'
       : provider === 'opencode'
-        ? 'opencode/big-pickle'
+        ? 'big-pickle'
         : '';
     const newSettings = { ...localSettings, provider, model: defaultModel };
     setLocalSettings(newSettings);
@@ -421,7 +421,7 @@ export default function SettingsModal() {
                       <span className="text-xs text-zinc-500">
                         Active: {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider}
                         {currentProvider === 'openrouter' && ' (Supports all models)'}
-                        {currentProvider === 'opencode' && ' (6 free models + premium)'}
+                        {currentProvider === 'opencode' && ' (Free & paid models)'}
                       </span>
                     </div>
                   </div>
