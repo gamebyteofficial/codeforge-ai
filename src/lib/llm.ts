@@ -89,21 +89,22 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: [
-      // Free models (widely available, no regional restrictions)
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'google/gemma-2-9b-it:free',
-      'mistralai/mistral-7b-instruct:free',
-      'qwen/qwen-2-7b-instruct:free',
+      // Free models (verified from OpenRouter API as of 2025)
+      'deepseek/deepseek-v4-flash:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'qwen/qwen3-coder:free',
+      'google/gemma-4-31b-it:free',
+      'moonshotai/kimi-k2.6:free',
+      'openai/gpt-oss-120b:free',
       // Popular paid models
-      'meta-llama/llama-3.1-70b-instruct',
-      'meta-llama/llama-3.1-405b-instruct',
-      'google/gemini-2.0-flash-exp',
-      'anthropic/claude-3.5-sonnet',
       'openai/gpt-4o',
       'openai/gpt-4o-mini',
+      'anthropic/claude-3.5-sonnet',
+      'google/gemini-2.0-flash-001',
+      'meta-llama/llama-3.1-70b-instruct',
       'deepseek/deepseek-chat',
     ],
-    testModel: 'meta-llama/llama-3.1-8b-instruct:free', // Use a free model for testing
+    testModel: 'deepseek/deepseek-v4-flash:free', // Use a free model for testing
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {
@@ -141,20 +142,22 @@ const MODEL_ALIASES: Record<string, { provider: ProviderKey; actualModel: string
   'mistral-large': { provider: 'mistral', actualModel: 'mistral-large-latest' },
   'mistral-medium': { provider: 'mistral', actualModel: 'mistral-medium-latest' },
   'codestral': { provider: 'mistral', actualModel: 'codestral-latest' },
-  // OpenRouter - Legacy alias (backward compat)
-  'auto': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-8b-instruct:free' },
-  // OpenRouter - Free models
-  'meta-llama/llama-3.1-8b-instruct:free': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-8b-instruct:free' },
-  'google/gemma-2-9b-it:free': { provider: 'openrouter', actualModel: 'google/gemma-2-9b-it:free' },
-  'mistralai/mistral-7b-instruct:free': { provider: 'openrouter', actualModel: 'mistralai/mistral-7b-instruct:free' },
-  'qwen/qwen-2-7b-instruct:free': { provider: 'openrouter', actualModel: 'qwen/qwen-2-7b-instruct:free' },
+  // OpenRouter - Legacy aliases (backward compat)
+  'auto': { provider: 'openrouter', actualModel: 'deepseek/deepseek-v4-flash:free' },
+  'meta-llama/llama-3.1-8b-instruct:free': { provider: 'openrouter', actualModel: 'deepseek/deepseek-v4-flash:free' },
+  // OpenRouter - Free models (verified from API)
+  'deepseek/deepseek-v4-flash:free': { provider: 'openrouter', actualModel: 'deepseek/deepseek-v4-flash:free' },
+  'meta-llama/llama-3.3-70b-instruct:free': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.3-70b-instruct:free' },
+  'qwen/qwen3-coder:free': { provider: 'openrouter', actualModel: 'qwen/qwen3-coder:free' },
+  'google/gemma-4-31b-it:free': { provider: 'openrouter', actualModel: 'google/gemma-4-31b-it:free' },
+  'moonshotai/kimi-k2.6:free': { provider: 'openrouter', actualModel: 'moonshotai/kimi-k2.6:free' },
+  'openai/gpt-oss-120b:free': { provider: 'openrouter', actualModel: 'openai/gpt-oss-120b:free' },
   // OpenRouter - Popular paid models
-  'meta-llama/llama-3.1-70b-instruct': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-70b-instruct' },
-  'meta-llama/llama-3.1-405b-instruct': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-405b-instruct' },
-  'google/gemini-2.0-flash-exp': { provider: 'openrouter', actualModel: 'google/gemini-2.0-flash-exp' },
-  'anthropic/claude-3.5-sonnet': { provider: 'openrouter', actualModel: 'anthropic/claude-3.5-sonnet' },
   'openai/gpt-4o': { provider: 'openrouter', actualModel: 'openai/gpt-4o' },
   'openai/gpt-4o-mini': { provider: 'openrouter', actualModel: 'openai/gpt-4o-mini' },
+  'anthropic/claude-3.5-sonnet': { provider: 'openrouter', actualModel: 'anthropic/claude-3.5-sonnet' },
+  'google/gemini-2.0-flash-001': { provider: 'openrouter', actualModel: 'google/gemini-2.0-flash-001' },
+  'meta-llama/llama-3.1-70b-instruct': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-70b-instruct' },
   'deepseek/deepseek-chat': { provider: 'openrouter', actualModel: 'deepseek/deepseek-chat' },
 };
 

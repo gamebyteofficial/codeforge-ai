@@ -227,7 +227,7 @@ export const useAppStore = create<AppState>((set) => ({
   isBottomPanelOpen: true,
   isSettingsOpen: false,
   selectedAgent: 'coder',
-  selectedModel: 'gpt-4o',
+  selectedModel: 'deepseek/deepseek-v4-flash:free',
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   setBottomTab: (tab) => set({ bottomTab: tab }),
   setIsSidebarOpen: (open) => set({ isSidebarOpen: open }),

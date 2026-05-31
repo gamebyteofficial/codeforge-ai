@@ -69,3 +69,25 @@ Stage Summary:
 - Users can select from 4 free OpenRouter models and 7 paid models
 - Backward compatibility: old 'auto' setting maps to free Llama model
 - All three UI components (OnboardingWizard, SettingsModal, ChatPanel) have consistent model lists
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix "No endpoints found for meta-llama/llama-3.1-8b-instruct:free" — update to verified current OpenRouter models
+
+Work Log:
+- Queried live OpenRouter API (https://openrouter.ai/api/v1/models) to get actual available models
+- Found that `meta-llama/llama-3.1-8b-instruct:free` no longer exists on OpenRouter
+- Identified 26 currently free models from the live API
+- Selected best free models: DeepSeek V4 Flash, Llama 3.3 70B, Qwen3 Coder 480B, Gemma 4 31B, Kimi K2.6, GPT-OSS 120B
+- Updated all 4 files with verified model IDs
+- Updated DB setting from 'auto' to 'deepseek/deepseek-v4-flash:free'
+- Added backward compat: old 'meta-llama/llama-3.1-8b-instruct:free' → 'deepseek/deepseek-v4-flash:free'
+- Changed default model in Zustand store to 'deepseek/deepseek-v4-flash:free'
+- Verified: lint passes, dev server running
+
+Stage Summary:
+- All OpenRouter model IDs now verified against live API
+- Free models available: DeepSeek V4 Flash, Llama 3.3 70B, Qwen3 Coder, Gemma 4 31B, Kimi K2.6, GPT-OSS 120B
+- Test connection uses DeepSeek V4 Flash (free, 1M context, widely available)
+- User's stored setting updated in DB to working model
