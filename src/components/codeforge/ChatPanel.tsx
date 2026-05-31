@@ -89,25 +89,43 @@ interface ModelOption {
 }
 
 const MODEL_OPTIONS: ModelOption[] = [
+  // OpenAI
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'o1', name: 'o1', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'o1-mini', name: 'o1 Mini', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  // Anthropic
   { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
   { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
   { id: 'claude-3-haiku', name: 'Claude 3 Haiku', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
+  // Gemini
   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
   { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
   { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
+  // Qwen
   { id: 'qwen-2.5-72b', name: 'Qwen 2.5 72B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
   { id: 'qwen-2.5-coder-32b', name: 'Qwen 2.5 Coder 32B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
+  // DeepSeek
   { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
   { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
+  // Mistral
   { id: 'mistral-large', name: 'Mistral Large', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
   { id: 'mistral-medium', name: 'Mistral Medium', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
   { id: 'codestral', name: 'Codestral', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
-  { id: 'auto', name: 'Auto (OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  // OpenRouter - Free models
+  { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  // OpenRouter - Paid models
+  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'google/gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
 ];
 
 const SUGGESTED_PROMPTS = [

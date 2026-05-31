@@ -24,6 +24,8 @@ interface ProviderConfig {
   baseUrl: string;
   /** Models that this provider supports */
   models: string[];
+  /** Model to use for connection testing (defaults to models[0]) */
+  testModel?: string;
   /** Chat completions path (for OpenAI-compatible APIs) */
   chatPath: string;
   /** Whether this provider uses the OpenAI-compatible API format */
@@ -86,7 +88,22 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
   openrouter: {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
-    models: ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'google/gemini-2.0-flash-exp', 'meta-llama/llama-3.1-70b-instruct'],
+    models: [
+      // Free models (widely available, no regional restrictions)
+      'meta-llama/llama-3.1-8b-instruct:free',
+      'google/gemma-2-9b-it:free',
+      'mistralai/mistral-7b-instruct:free',
+      'qwen/qwen-2-7b-instruct:free',
+      // Popular paid models
+      'meta-llama/llama-3.1-70b-instruct',
+      'meta-llama/llama-3.1-405b-instruct',
+      'google/gemini-2.0-flash-exp',
+      'anthropic/claude-3.5-sonnet',
+      'openai/gpt-4o',
+      'openai/gpt-4o-mini',
+      'deepseek/deepseek-chat',
+    ],
+    testModel: 'meta-llama/llama-3.1-8b-instruct:free', // Use a free model for testing
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {
@@ -124,8 +141,21 @@ const MODEL_ALIASES: Record<string, { provider: ProviderKey; actualModel: string
   'mistral-large': { provider: 'mistral', actualModel: 'mistral-large-latest' },
   'mistral-medium': { provider: 'mistral', actualModel: 'mistral-medium-latest' },
   'codestral': { provider: 'mistral', actualModel: 'codestral-latest' },
-  // OpenRouter
-  'auto': { provider: 'openrouter', actualModel: 'openai/gpt-4o' },
+  // OpenRouter - Legacy alias (backward compat)
+  'auto': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-8b-instruct:free' },
+  // OpenRouter - Free models
+  'meta-llama/llama-3.1-8b-instruct:free': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-8b-instruct:free' },
+  'google/gemma-2-9b-it:free': { provider: 'openrouter', actualModel: 'google/gemma-2-9b-it:free' },
+  'mistralai/mistral-7b-instruct:free': { provider: 'openrouter', actualModel: 'mistralai/mistral-7b-instruct:free' },
+  'qwen/qwen-2-7b-instruct:free': { provider: 'openrouter', actualModel: 'qwen/qwen-2-7b-instruct:free' },
+  // OpenRouter - Popular paid models
+  'meta-llama/llama-3.1-70b-instruct': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-70b-instruct' },
+  'meta-llama/llama-3.1-405b-instruct': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-405b-instruct' },
+  'google/gemini-2.0-flash-exp': { provider: 'openrouter', actualModel: 'google/gemini-2.0-flash-exp' },
+  'anthropic/claude-3.5-sonnet': { provider: 'openrouter', actualModel: 'anthropic/claude-3.5-sonnet' },
+  'openai/gpt-4o': { provider: 'openrouter', actualModel: 'openai/gpt-4o' },
+  'openai/gpt-4o-mini': { provider: 'openrouter', actualModel: 'openai/gpt-4o-mini' },
+  'deepseek/deepseek-chat': { provider: 'openrouter', actualModel: 'deepseek/deepseek-chat' },
 };
 
 // ─── Settings Helper ─────────────────────────────────────────────────────────
@@ -562,11 +592,14 @@ export async function testProviderConnection(
       ...config.extraHeaders,
     };
 
+    // Use testModel if specified (e.g., free models for OpenRouter), otherwise first model
+    const testModelId = config.testModel || config.models[0];
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: config.models[0],
+        model: testModelId,
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 10,
       }),
