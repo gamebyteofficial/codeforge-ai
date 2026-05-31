@@ -40,8 +40,11 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
+  CreditCard,
+  Gift,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ApiKeyGuide from './ApiKeyGuide';
 
 // ─── Provider / Model Definitions ────────────────────────────────────────────
 
@@ -421,7 +424,7 @@ export default function SettingsModal() {
                         type={showApiKey ? 'text' : 'password'}
                         value={localSettings.apiKey || ''}
                         onChange={(e) => updateSetting('apiKey', e.target.value)}
-                        placeholder="sk-..."
+                        placeholder={PROVIDERS[currentProvider as ProviderKey]?.keyHint || 'sk-...'}
                         className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm"
                       />
                       <Button
@@ -438,10 +441,25 @@ export default function SettingsModal() {
                         )}
                       </Button>
                     </div>
+                    {/* API Key status indicator */}
+                    {localSettings.apiKey ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-3 text-emerald-400" />
+                        <span className="text-xs text-emerald-400">API key configured</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5">
+                        <AlertCircle className="size-3 text-amber-400 shrink-0" />
+                        <span className="text-xs text-amber-300/80">No API key — enter one below to use {PROVIDERS[currentProvider as ProviderKey]?.name || 'this provider'}</span>
+                      </div>
+                    )}
                     <p className="text-xs text-zinc-600">
                       Your {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider} API key. Used to call the provider directly from the backend.
                     </p>
                   </div>
+
+                  {/* API Key Guide */}
+                  <ApiKeyGuide provider={currentProvider as ProviderKey} compact />
 
                   {/* Model Selection - Dynamic */}
                   <div className="space-y-2">
@@ -500,9 +518,26 @@ export default function SettingsModal() {
                     )}
                     {localSettings.model && (
                       <div className="rounded-md border border-zinc-800 bg-zinc-800/20 px-3 py-2">
-                        <p className="text-xs text-zinc-400">
-                          Active model: <span className="text-emerald-400 font-mono">{localSettings.model}</span>
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-zinc-400">
+                            Active model: <span className="text-emerald-400 font-mono">{localSettings.model}</span>
+                          </p>
+                          {(() => {
+                            const activeModel = models.find(m => m.id === localSettings.model);
+                            if (!activeModel) return null;
+                            return activeModel.isFree ? (
+                              <span className="flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
+                                <Gift className="size-2.5" />
+                                FREE
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-400">
+                                <CreditCard className="size-2.5" />
+                                PAID
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
                     )}
                   </div>

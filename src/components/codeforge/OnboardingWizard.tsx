@@ -16,6 +16,8 @@ import {
   Terminal,
   Brain,
   RefreshCw,
+  CreditCard,
+  Gift,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { useUIState, useStore } from '@/store/hooks';
@@ -31,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import ApiKeyGuide, { QuickProviderCards } from './ApiKeyGuide';
 
 // ─── Provider / Model Definitions ────────────────────────────────────────────
 
@@ -295,7 +298,7 @@ export default function OnboardingWizard() {
         transition={{ duration: 0.5 }}
         className="relative z-10 w-full max-w-lg px-4"
       >
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl max-h-[90vh] overflow-y-auto custom-scrollbar">
           {/* Step indicator dots */}
           <div className="mb-8 flex items-center justify-center gap-3">
             {[0, 1, 2].map((i) => (
@@ -529,7 +532,7 @@ function Step2ApiKey({
   onTestConnection,
 }: Step2Props) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
       <div className="text-center">
         <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20">
@@ -541,9 +544,12 @@ function Step2ApiKey({
         </p>
       </div>
 
-      {/* Provider Selector */}
+      {/* Quick Provider Cards */}
+      <QuickProviderCards selected={provider} onSelect={onProviderChange} />
+
+      {/* Full Provider Selector */}
       <div className="space-y-2">
-        <Label className="text-zinc-300 text-xs">AI Provider</Label>
+        <Label className="text-zinc-300 text-xs">Or select from all providers</Label>
         <Select value={provider} onValueChange={onProviderChange}>
           <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
             <SelectValue placeholder="Select provider" />
@@ -599,10 +605,19 @@ function Step2ApiKey({
             )}
           </Button>
         </div>
+        {!apiKey && (
+          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5">
+            <AlertCircle className="size-3 text-amber-400 shrink-0" />
+            <span className="text-xs text-amber-300/80">You need an API key to use AI models. See the guide below ↓</span>
+          </div>
+        )}
         <p className="text-xs text-zinc-600">
           Your {PROVIDERS[provider].name} API key. Used only to call {PROVIDERS[provider].name} directly from the backend.
         </p>
       </div>
+
+      {/* API Key Guide */}
+      <ApiKeyGuide provider={provider} />
 
       {/* Test Connection */}
       <div className="flex items-center gap-3">
@@ -752,9 +767,15 @@ function Step3ModelSelection({
                     >
                       <div className="flex items-center gap-2">
                         <span className="flex-1 truncate">{m.name}</span>
-                        {m.isFree && (
-                          <span className="shrink-0 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
+                        {m.isFree ? (
+                          <span className="flex items-center gap-0.5 shrink-0 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
+                            <Gift className="size-2" />
                             FREE
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-0.5 shrink-0 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-medium text-amber-400">
+                            <CreditCard className="size-2" />
+                            PAID
                           </span>
                         )}
                       </div>
@@ -768,9 +789,26 @@ function Step3ModelSelection({
 
         {model && (
           <div className="rounded-md border border-zinc-800 bg-zinc-800/20 px-3 py-2">
-            <p className="text-xs text-zinc-400">
-              Selected: <span className="text-emerald-400 font-mono">{model}</span>
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-zinc-400">
+                Selected: <span className="text-emerald-400 font-mono">{model}</span>
+              </p>
+              {(() => {
+                const selectedM = models.find(m => m.id === model);
+                if (!selectedM) return null;
+                return selectedM.isFree ? (
+                  <span className="flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
+                    <Gift className="size-2.5" />
+                    FREE
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-400">
+                    <CreditCard className="size-2.5" />
+                    PAID
+                  </span>
+                );
+              })()}
+            </div>
           </div>
         )}
       </div>
