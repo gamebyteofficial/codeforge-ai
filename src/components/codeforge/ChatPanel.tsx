@@ -620,8 +620,9 @@ function ChatHeader() {
     }
   }, [setSelectedModel, settings, setSettings]);
 
-  // Show connection status
-  const isConnected = !!(settings.apiKey);
+  // Show connection status (check per-provider key or legacy key)
+  const currentProvider = settings.provider || 'openrouter';
+  const isConnected = !!(settings[`${currentProvider}_apiKey`] || settings.apiKey);
 
   return (
     <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 backdrop-blur-sm">

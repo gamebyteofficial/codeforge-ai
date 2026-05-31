@@ -42,6 +42,8 @@ import {
   RefreshCw,
   CreditCard,
   Gift,
+  Zap,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ApiKeyGuide from './ApiKeyGuide';
@@ -118,6 +120,7 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
 
 const DEFAULT_SETTINGS: Record<string, string> = {
   provider: 'openrouter',
+  provider2: 'opencode',
   apiKey: '',
   model: 'openrouter/auto',
   language: 'typescript',
@@ -132,6 +135,136 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   streaming: 'true',
 };
 
+// ─── API Key Input Sub-component ─────────────────────────────────────────────
+
+function ApiKeyInputSection({
+  label,
+  provider,
+  apiKey,
+  onProviderChange,
+  onApiKeyChange,
+  showApiKey,
+  onToggleShowKey,
+  connectionStatus,
+  onTestConnection,
+  isTesting,
+  excludeProvider,
+}: {
+  label: string;
+  labelIcon: React.ReactNode;
+  provider: ProviderKey;
+  apiKey: string;
+  onProviderChange: (provider: string) => void;
+  onApiKeyChange: (key: string) => void;
+  showApiKey: boolean;
+  onToggleShowKey: () => void;
+  connectionStatus: 'idle' | 'success' | 'error';
+  onTestConnection: () => void;
+  isTesting: boolean;
+  excludeProvider?: string;
+}) {
+  const providerInfo = PROVIDERS[provider];
+
+  return (
+    <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/20 p-4">
+      {/* Section header */}
+      <div className="flex items-center gap-2">
+        <Zap className="size-3.5 text-emerald-400" />
+        <span className="text-xs font-semibold text-zinc-300">{label}</span>
+        <span className="text-base">{providerInfo.icon}</span>
+        <span className="text-xs text-zinc-400">{providerInfo.name}</span>
+        {apiKey && (
+          <CheckCircle2 className="ml-auto size-3.5 text-emerald-400" />
+        )}
+      </div>
+
+      {/* Provider selector */}
+      <div className="space-y-1.5">
+        <Label className="text-zinc-500 text-[10px] uppercase tracking-wider">Provider</Label>
+        <Select value={provider} onValueChange={onProviderChange}>
+          <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-8 text-xs">
+            <SelectValue placeholder="Select provider" />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-800 border-zinc-700">
+            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
+              .filter(([key]) => key !== excludeProvider)
+              .map(([key, info]) => (
+                <SelectItem
+                  key={key}
+                  value={key}
+                  className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100 text-xs"
+                >
+                  <span className="mr-2">{info.icon}</span>
+                  {info.name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* API Key input */}
+      <div className="space-y-1.5">
+        <Label className="text-zinc-500 text-[10px] uppercase tracking-wider">API Key</Label>
+        <div className="relative">
+          <Input
+            type={showApiKey ? 'text' : 'password'}
+            value={apiKey}
+            onChange={(e) => onApiKeyChange(e.target.value)}
+            placeholder={providerInfo.keyHint || 'sk-...'}
+            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-8 font-mono text-xs"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-0.5 top-1/2 -translate-y-1/2 size-7 text-zinc-500 hover:text-zinc-300"
+            onClick={onToggleShowKey}
+          >
+            {showApiKey ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+          </Button>
+        </div>
+        {!apiKey && (
+          <div className="flex items-center gap-1.5 rounded bg-amber-500/10 border border-amber-500/15 px-2 py-1">
+            <AlertCircle className="size-2.5 text-amber-400 shrink-0" />
+            <span className="text-[10px] text-amber-300/80">No key — enter one to use {providerInfo.name}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Test Connection */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-zinc-800/50 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 h-7 text-[11px] gap-1.5"
+          onClick={onTestConnection}
+          disabled={isTesting || !apiKey}
+        >
+          {isTesting ? (
+            <><Loader2 className="size-3 animate-spin" /> Testing…</>
+          ) : connectionStatus === 'success' ? (
+            <><CheckCircle2 className="size-3 text-emerald-400" /> Connected</>
+          ) : connectionStatus === 'error' ? (
+            <><AlertCircle className="size-3 text-red-400" /> Failed — Retry</>
+          ) : (
+            <><Wifi className="size-3" /> Test Connection</>
+          )}
+        </Button>
+        {connectionStatus === 'success' && (
+          <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+            <Wifi className="size-2.5" /> Connected to {providerInfo.name}
+          </span>
+        )}
+        {connectionStatus === 'error' && (
+          <span className="text-[10px] text-red-400 flex items-center gap-1">
+            <WifiOff className="size-2.5" /> Connection failed
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Modal Component ────────────────────────────────────────────────
 
 export default function SettingsModal() {
@@ -141,11 +274,14 @@ export default function SettingsModal() {
   const setSettings = useStore(s => s.setSettings);
 
   const [localSettings, setLocalSettings] = useState<Record<string, string>>({ ...settings });
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiKey1, setShowApiKey1] = useState(false);
+  const [showApiKey2, setShowApiKey2] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTesting1, setIsTesting1] = useState(false);
+  const [isTesting2, setIsTesting2] = useState(false);
+  const [connectionStatus1, setConnectionStatus1] = useState<'idle' | 'success' | 'error'>('idle');
+  const [connectionStatus2, setConnectionStatus2] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Dynamic models state
   const [models, setModels] = useState<DynamicModel[]>([]);
@@ -216,8 +352,16 @@ export default function SettingsModal() {
     setLocalSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  // When provider changes, update model to the first model of that provider
-  const handleProviderChange = (provider: string) => {
+  // Current providers
+  const currentProvider1 = (localSettings.provider || 'openrouter') as ProviderKey;
+  const currentProvider2 = (localSettings.provider2 || 'opencode') as ProviderKey;
+
+  // API keys (per-provider or legacy)
+  const apiKey1 = localSettings[`${currentProvider1}_apiKey`] || (localSettings.provider === currentProvider1 ? localSettings.apiKey : '');
+  const apiKey2 = localSettings[`${currentProvider2}_apiKey`] || '';
+
+  // When primary provider changes
+  const handleProvider1Change = (provider: string) => {
     const defaultModel = provider === 'openrouter'
       ? 'openrouter/auto'
       : provider === 'opencode'
@@ -225,8 +369,109 @@ export default function SettingsModal() {
         : '';
     const newSettings = { ...localSettings, provider, model: defaultModel };
     setLocalSettings(newSettings);
-    setConnectionStatus('idle');
-    // Models will be fetched by the useEffect above
+    setConnectionStatus1('idle');
+  };
+
+  // When secondary provider changes
+  const handleProvider2Change = (provider: string) => {
+    updateSetting('provider2', provider);
+    setConnectionStatus2('idle');
+  };
+
+  // When primary API key changes
+  const handleApiKey1Change = (key: string) => {
+    const perProviderKey = `${currentProvider1}_apiKey`;
+    const newSettings = { ...localSettings, [perProviderKey]: key };
+    // Also update legacy apiKey for backward compat
+    if (localSettings.provider === currentProvider1) {
+      newSettings.apiKey = key;
+    }
+    setLocalSettings(newSettings);
+  };
+
+  // When secondary API key changes
+  const handleApiKey2Change = (key: string) => {
+    const perProviderKey = `${currentProvider2}_apiKey`;
+    setLocalSettings((prev) => ({ ...prev, [perProviderKey]: key }));
+  };
+
+  // Swap primary ↔ secondary
+  const handleSwapProviders = () => {
+    const newSettings = {
+      ...localSettings,
+      provider: currentProvider2,
+      provider2: currentProvider1,
+    };
+    // Update default model for new primary
+    if (currentProvider2 === 'openrouter') {
+      newSettings.model = 'openrouter/auto';
+    } else if (currentProvider2 === 'opencode') {
+      newSettings.model = 'big-pickle';
+    }
+    setLocalSettings(newSettings);
+    setConnectionStatus1('idle');
+    setConnectionStatus2('idle');
+    toast.info('Providers swapped', { description: `${PROVIDERS[currentProvider2].name} is now your primary provider` });
+  };
+
+  // Test primary connection
+  const handleTestConnection1 = async () => {
+    setIsTesting1(true);
+    setConnectionStatus1('idle');
+    try {
+      const key = localSettings[`${currentProvider1}_apiKey`] || localSettings.apiKey;
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { ...localSettings, provider: currentProvider1, [`${currentProvider1}_apiKey`]: key, apiKey: key },
+          testConnection: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setConnectionStatus1('success');
+        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider1].name}` });
+      } else {
+        setConnectionStatus1('error');
+        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
+      }
+    } catch {
+      setConnectionStatus1('error');
+      toast.error('Connection failed', { description: 'Network error.' });
+    } finally {
+      setIsTesting1(false);
+    }
+  };
+
+  // Test secondary connection
+  const handleTestConnection2 = async () => {
+    setIsTesting2(true);
+    setConnectionStatus2('idle');
+    try {
+      const key = localSettings[`${currentProvider2}_apiKey`];
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { provider: currentProvider2, [`${currentProvider2}_apiKey`]: key, apiKey: key },
+          testConnection: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setConnectionStatus2('success');
+        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider2].name}` });
+      } else {
+        setConnectionStatus2('error');
+        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
+      }
+    } catch {
+      setConnectionStatus2('error');
+      toast.error('Connection failed', { description: 'Network error.' });
+    } finally {
+      setIsTesting2(false);
+    }
   };
 
   // Save settings to API
@@ -240,19 +485,13 @@ export default function SettingsModal() {
       });
       if (res.ok) {
         setSettings(localSettings);
-        toast.success('Settings saved', {
-          description: 'Your preferences have been updated successfully.',
-        });
+        toast.success('Settings saved', { description: 'Your preferences have been updated.' });
         setIsSettingsOpen(false);
       } else {
-        toast.error('Failed to save settings', {
-          description: 'Please try again.',
-        });
+        toast.error('Failed to save settings');
       }
     } catch {
-      toast.error('Failed to save settings', {
-        description: 'Network error. Please try again.',
-      });
+      toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
@@ -261,60 +500,25 @@ export default function SettingsModal() {
   // Reset to defaults
   const handleReset = () => {
     setLocalSettings({ ...DEFAULT_SETTINGS });
-    setShowApiKey(false);
-    setConnectionStatus('idle');
-    toast.info('Settings reset', {
-      description: 'All settings have been restored to defaults.',
-    });
+    setShowApiKey1(false);
+    setShowApiKey2(false);
+    setConnectionStatus1('idle');
+    setConnectionStatus2('idle');
+    toast.info('Settings reset');
   };
 
-  // Test connection
-  const handleTestConnection = async () => {
-    setIsTesting(true);
-    setConnectionStatus('idle');
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settings: localSettings,
-          testConnection: true,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConnectionStatus('success');
-        toast.success('Connection successful', {
-          description: `Connected to ${PROVIDERS[localSettings.provider as ProviderKey]?.name || localSettings.provider}`,
-        });
-      } else {
-        setConnectionStatus('error');
-        toast.error('Connection failed', {
-          description: data.error || 'Could not connect to the provider.',
-        });
-      }
-    } catch {
-      setConnectionStatus('error');
-      toast.error('Connection failed', {
-        description: 'Network error. Please check your API key.',
-      });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  // Cancel — close without saving
+  // Cancel
   const handleCancel = () => {
     setLocalSettings({ ...settings });
-    setShowApiKey(false);
-    setConnectionStatus('idle');
+    setShowApiKey1(false);
+    setShowApiKey2(false);
+    setConnectionStatus1('idle');
+    setConnectionStatus2('idle');
     setIsSettingsOpen(false);
   };
 
-  const currentProvider = localSettings.provider || 'openrouter';
-
   // Group models for display
-  const groupedModels = (currentProvider === 'openrouter' || currentProvider === 'opencode')
+  const groupedModels = (currentProvider1 === 'openrouter' || currentProvider1 === 'opencode')
     ? (() => {
         const auto = models.filter((m) => m.id === 'openrouter/auto');
         const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');
@@ -325,7 +529,7 @@ export default function SettingsModal() {
         if (paid.length) groups.push({ label: `💎 Paid Models (${paid.length})`, models: paid });
         return groups;
       })()
-    : [{ label: PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider, models }];
+    : [{ label: PROVIDERS[currentProvider1 as ProviderKey]?.name || currentProvider1, models }];
 
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -388,90 +592,56 @@ export default function SettingsModal() {
                 </div>
               ) : (
                 <>
-                  {/* Provider Selector */}
-                  <div className="space-y-2">
-                    <Label className="text-zinc-300 text-xs">
-                      AI Provider
-                    </Label>
-                    <Select
-                      value={currentProvider}
-                      onValueChange={handleProviderChange}
-                    >
-                      <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
-                        <SelectValue placeholder="Select provider" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-zinc-800 border-zinc-700">
-                        {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][]).map(
-                          ([key, info]) => (
-                            <SelectItem
-                              key={key}
-                              value={key}
-                              className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
-                            >
-                              <span className="mr-2">{info.icon}</span>
-                              {info.name}
-                            </SelectItem>
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {/* Active provider indicator */}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs text-zinc-500">
-                        Active: {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider}
-                        {currentProvider === 'openrouter' && ' (Supports all models)'}
-                        {currentProvider === 'opencode' && ' (Free & paid models)'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* API Key */}
-                  <div className="space-y-2">
-                    <Label className="text-zinc-300 text-xs">
-                      API Key
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        type={showApiKey ? 'text' : 'password'}
-                        value={localSettings.apiKey || ''}
-                        onChange={(e) => updateSetting('apiKey', e.target.value)}
-                        placeholder={PROVIDERS[currentProvider as ProviderKey]?.keyHint || 'sk-...'}
-                        className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm"
-                      />
+                  {/* Two API Key Sections */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-zinc-300 text-xs">API Keys</Label>
                       <Button
-                        type="button"
                         variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1/2 -translate-y-1/2 size-7 text-zinc-500 hover:text-zinc-300"
-                        onClick={() => setShowApiKey(!showApiKey)}
+                        size="sm"
+                        className="h-6 gap-1 px-2 text-[10px] text-zinc-500 hover:text-emerald-400"
+                        onClick={handleSwapProviders}
                       >
-                        {showApiKey ? (
-                          <EyeOff className="size-3.5" />
-                        ) : (
-                          <Eye className="size-3.5" />
-                        )}
+                        <ArrowRightLeft className="size-3" />
+                        Swap Primary ↔ Secondary
                       </Button>
                     </div>
-                    {/* API Key status indicator */}
-                    {localSettings.apiKey ? (
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="size-3 text-emerald-400" />
-                        <span className="text-xs text-emerald-400">API key configured</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5">
-                        <AlertCircle className="size-3 text-amber-400 shrink-0" />
-                        <span className="text-xs text-amber-300/80">No API key — enter one below to use {PROVIDERS[currentProvider as ProviderKey]?.name || 'this provider'}</span>
-                      </div>
-                    )}
-                    <p className="text-xs text-zinc-600">
-                      Your {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider} API key. Used to call the provider directly from the backend.
-                    </p>
+
+                    {/* Primary Provider */}
+                    <ApiKeyInputSection
+                      label="Primary Provider (Active)"
+                      labelIcon={<Zap className="size-3.5 text-emerald-400" />}
+                      provider={currentProvider1}
+                      apiKey={apiKey1}
+                      onProviderChange={handleProvider1Change}
+                      onApiKeyChange={handleApiKey1Change}
+                      showApiKey={showApiKey1}
+                      onToggleShowKey={() => setShowApiKey1(!showApiKey1)}
+                      connectionStatus={connectionStatus1}
+                      onTestConnection={handleTestConnection1}
+                      isTesting={isTesting1}
+                      excludeProvider={currentProvider2}
+                    />
+
+                    {/* Secondary Provider */}
+                    <ApiKeyInputSection
+                      label="Secondary Provider (Backup)"
+                      labelIcon={<Zap className="size-3.5 text-zinc-500" />}
+                      provider={currentProvider2}
+                      apiKey={apiKey2}
+                      onProviderChange={handleProvider2Change}
+                      onApiKeyChange={handleApiKey2Change}
+                      showApiKey={showApiKey2}
+                      onToggleShowKey={() => setShowApiKey2(!showApiKey2)}
+                      connectionStatus={connectionStatus2}
+                      onTestConnection={handleTestConnection2}
+                      isTesting={isTesting2}
+                      excludeProvider={currentProvider1}
+                    />
                   </div>
 
                   {/* API Key Guide */}
-                  <ApiKeyGuide provider={currentProvider as ProviderKey} compact />
+                  <ApiKeyGuide provider={currentProvider1} compact />
 
                   {/* Model Selection - Dynamic */}
                   <div className="space-y-2">
@@ -554,49 +724,20 @@ export default function SettingsModal() {
                     )}
                   </div>
 
-                  {/* Test Connection */}
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="bg-zinc-800/50 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 h-8"
-                      onClick={handleTestConnection}
-                      disabled={isTesting || !localSettings.apiKey}
-                    >
-                      {isTesting ? (
+                  {/* Configured providers summary */}
+                  <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/10 px-3 py-2">
+                    <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[11px] text-zinc-500">
+                      Primary: <span className="text-zinc-300">{PROVIDERS[currentProvider1]?.name}</span>
+                      {apiKey1 && <span className="text-emerald-400 ml-1">✓</span>}
+                      {currentProvider2 && (
                         <>
-                          <Loader2 className="size-3.5 animate-spin" />
-                          Testing…
-                        </>
-                      ) : connectionStatus === 'success' ? (
-                        <>
-                          <CheckCircle2 className="size-3.5 text-emerald-400" />
-                          Connected
-                        </>
-                      ) : connectionStatus === 'error' ? (
-                        <>
-                          <AlertCircle className="size-3.5 text-red-400" />
-                          Failed — Retry
-                        </>
-                      ) : (
-                        <>
-                          <Wifi className="size-3.5" />
-                          Test Connection
+                          <span className="mx-2 text-zinc-700">|</span>
+                          Secondary: <span className="text-zinc-300">{PROVIDERS[currentProvider2]?.name}</span>
+                          {apiKey2 && <span className="text-emerald-400 ml-1">✓</span>}
                         </>
                       )}
-                    </Button>
-                    {connectionStatus === 'success' && (
-                      <span className="text-xs text-emerald-400 flex items-center gap-1">
-                        <Wifi className="size-3" />
-                        Connected to {PROVIDERS[currentProvider as ProviderKey]?.name}
-                      </span>
-                    )}
-                    {connectionStatus === 'error' && (
-                      <span className="text-xs text-red-400 flex items-center gap-1">
-                        <WifiOff className="size-3" />
-                        Connection failed
-                      </span>
-                    )}
+                    </span>
                   </div>
                 </>
               )}
@@ -606,9 +747,7 @@ export default function SettingsModal() {
             <TabsContent value="general" className="mt-0 space-y-5">
               {/* Default Language */}
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-xs">
-                  Default Language
-                </Label>
+                <Label className="text-zinc-300 text-xs">Default Language</Label>
                 <Select
                   value={localSettings.language || 'typescript'}
                   onValueChange={(v) => updateSetting('language', v)}
@@ -631,9 +770,7 @@ export default function SettingsModal() {
 
               {/* Default Framework */}
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-xs">
-                  Default Framework
-                </Label>
+                <Label className="text-zinc-300 text-xs">Default Framework</Label>
                 <Select
                   value={localSettings.framework || 'nextjs'}
                   onValueChange={(v) => updateSetting('framework', v)}
@@ -673,9 +810,7 @@ export default function SettingsModal() {
 
               {/* Theme Preference */}
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-xs">
-                  Theme
-                </Label>
+                <Label className="text-zinc-300 text-xs">Theme</Label>
                 <Select
                   value={localSettings.theme || 'dark'}
                   onValueChange={(v) => updateSetting('theme', v)}
@@ -696,9 +831,7 @@ export default function SettingsModal() {
 
               {/* Command Approval Mode */}
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-xs">
-                  Command Approval Mode
-                </Label>
+                <Label className="text-zinc-300 text-xs">Command Approval Mode</Label>
                 <Select
                   value={localSettings.commandApproval || 'auto'}
                   onValueChange={(v) => updateSetting('commandApproval', v)}
@@ -772,9 +905,7 @@ export default function SettingsModal() {
 
               {/* Context Window Size */}
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-xs">
-                  Context Window Size
-                </Label>
+                <Label className="text-zinc-300 text-xs">Context Window Size</Label>
                 <Select
                   value={localSettings.contextWindowSize || '8192'}
                   onValueChange={(v) => updateSetting('contextWindowSize', v)}

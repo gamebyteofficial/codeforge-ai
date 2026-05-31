@@ -25,3 +25,36 @@ Stage Summary:
 - Models API now dynamically fetches from OpenCode Zen for always up-to-date model list
 - Free models: big-pickle, deepseek-v4-flash-free, mimo-v2.5-free, qwen3.6-plus-free, minimax-m3-free, nemotron-3-super-free
 - All paid models properly marked as isFree: false
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Add two API key input options (Primary + Secondary providers)
+
+Work Log:
+- Updated `src/lib/llm.ts`: Added `getApiKeyForProvider()` helper for per-provider key resolution
+- Updated `streamLLM()`: Now resolves API keys per-provider (`{provider}_apiKey`), falls back to legacy `apiKey`, then checks secondary provider
+- Updated `src/app/api/settings/route.ts`: Connection test now uses per-provider key lookup
+- Rewrote `src/components/codeforge/SettingsModal.tsx`:
+  - Two API key input sections: Primary Provider (Active) + Secondary Provider (Backup)
+  - Each section has its own provider selector, API key input, show/hide toggle, and test connection button
+  - "Swap Primary ↔ Secondary" button to quickly switch providers
+  - Provider dropdowns exclude the other provider to prevent duplicates
+  - Per-provider keys stored as `{provider}_apiKey` (e.g., `opencode_apiKey`, `openrouter_apiKey`)
+  - Legacy `apiKey` field maintained for backward compatibility
+  - Added `provider2` setting for secondary provider (default: `opencode`)
+- Rewrote `src/components/codeforge/OnboardingWizard.tsx`:
+  - Step 2 now shows two API key inputs (Primary + Secondary)
+  - Primary section has green border emphasis, Secondary is more subtle
+  - Secondary provider marked as "Optional"
+  - Saves both per-provider keys on completion
+- Updated `src/components/codeforge/ChatPanel.tsx`: Connection status now checks per-provider key
+- Lint check passes with zero errors
+- Dev server running and healthy
+
+Stage Summary:
+- Users can now configure two API providers simultaneously
+- Per-provider keys prevent losing API keys when switching providers
+- Primary provider is used for all LLM calls; Secondary is available as fallback
+- "Swap" button lets users quickly promote secondary to primary
+- Full backward compatibility with old single `apiKey` setting

@@ -469,6 +469,26 @@ async function* streamGemini(
   yield { content: '', done: true };
 }
 
+// ─── Per-Provider API Key Helper ──────────────────────────────────────────────
+
+/**
+ * Resolve the API key for a given provider from settings.
+ *
+ * Resolution order:
+ * 1. Per-provider key: settings[`${provider}_apiKey`]
+ * 2. Legacy single key (only if the requested provider matches the active provider): settings.apiKey
+ * 3. Return null if no key found
+ */
+export function getApiKeyForProvider(settings: Record<string, string>, provider: ProviderKey): string | null {
+  // 1. Per-provider key
+  const perProviderKey = settings[`${provider}_apiKey`];
+  if (perProviderKey) return perProviderKey;
+  // 2. Legacy single key (only if the requested provider matches the active provider)
+  if (settings.provider === provider && settings.apiKey) return settings.apiKey;
+  // 3. Return null if no key found
+  return null;
+}
+
 // ─── Main LLM Client ─────────────────────────────────────────────────────────
 
 export interface LLMCallOptions {
@@ -496,8 +516,22 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
 
   // ── Step 1: Get the configured provider and API key from settings ──
   const settings = await getUserSettings();
-  const apiKey = settings.apiKey;
   const configuredProvider = (settings.provider || 'openrouter') as ProviderKey;
+
+  // Resolve API key using per-provider key resolution with fallback
+  // 1. Try per-provider key for primary provider
+  // 2. Fall back to legacy single apiKey
+  // 3. If both empty, check secondary provider key
+  // 4. If still empty, show error
+  let apiKey = getApiKeyForProvider(settings, configuredProvider);
+
+  if (!apiKey) {
+    // Try secondary provider key as fallback
+    const provider2 = settings.provider2 as ProviderKey | undefined;
+    if (provider2) {
+      apiKey = getApiKeyForProvider(settings, provider2);
+    }
+  }
 
   if (!apiKey) {
     yield { content: '', error: 'No API key configured. Please add your API key in Settings.', done: true };

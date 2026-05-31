@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { testProviderConnection, type ProviderKey } from '@/lib/llm';
+import { testProviderConnection, getApiKeyForProvider, type ProviderKey } from '@/lib/llm';
 
 export async function GET() {
   try {
@@ -30,8 +30,10 @@ export async function POST(req: NextRequest) {
 
     // Handle real connection test
     if (testConnection) {
-      const apiKey = settings.apiKey;
       const provider = (settings.provider || 'openai') as ProviderKey;
+
+      // Try per-provider key first, then legacy key
+      const apiKey = getApiKeyForProvider(settings, provider) || settings.apiKey;
 
       if (!apiKey) {
         return NextResponse.json(

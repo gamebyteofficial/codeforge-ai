@@ -18,6 +18,7 @@ import {
   RefreshCw,
   CreditCard,
   Gift,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { useUIState, useStore } from '@/store/hooks';
@@ -130,14 +131,19 @@ export default function OnboardingWizard() {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
 
-  // Step 2 state
-  const [provider, setProvider] = useState<ProviderKey>('openrouter');
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  // Step 1 state - Two API keys
+  const [provider1, setProvider1] = useState<ProviderKey>('openrouter');
+  const [provider2, setProvider2] = useState<ProviderKey>('opencode');
+  const [apiKey1, setApiKey1] = useState('');
+  const [apiKey2, setApiKey2] = useState('');
+  const [showApiKey1, setShowApiKey1] = useState(false);
+  const [showApiKey2, setShowApiKey2] = useState(false);
+  const [isTesting1, setIsTesting1] = useState(false);
+  const [isTesting2, setIsTesting2] = useState(false);
+  const [connectionStatus1, setConnectionStatus1] = useState<'idle' | 'success' | 'error'>('idle');
+  const [connectionStatus2, setConnectionStatus2] = useState<'idle' | 'success' | 'error'>('idle');
 
-  // Step 3 state
+  // Step 2 state
   const [model, setModel] = useState('openrouter/auto');
   const [models, setModels] = useState<DynamicModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -150,11 +156,10 @@ export default function OnboardingWizard() {
     setStep(nextStep);
   };
 
-  const handleProviderChange = (newProvider: string) => {
+  const handleProvider1Change = (newProvider: string) => {
     const key = newProvider as ProviderKey;
-    setProvider(key);
-    setConnectionStatus('idle');
-    // Reset model to auto/default
+    setProvider1(key);
+    setConnectionStatus1('idle');
     if (key === 'openrouter') {
       setModel('openrouter/auto');
     } else if (key === 'opencode') {
@@ -165,15 +170,20 @@ export default function OnboardingWizard() {
     setModels([]);
   };
 
-  // Fetch models when moving to step 2 (after connection test) or when provider changes
+  const handleProvider2Change = (newProvider: string) => {
+    setProvider2(newProvider as ProviderKey);
+    setConnectionStatus2('idle');
+  };
+
+  // Fetch models when moving to step 2
   const fetchModels = useCallback(async () => {
     setIsLoadingModels(true);
     try {
-      // Save provider temporarily so /api/models can read it
+      const perProviderKey = `${provider1}_apiKey`;
       const tempRes = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: { provider, apiKey } }),
+        body: JSON.stringify({ settings: { provider: provider1, [perProviderKey]: apiKey1, apiKey: apiKey1 } }),
       });
 
       if (tempRes.ok) {
@@ -182,7 +192,6 @@ export default function OnboardingWizard() {
           const data = await modelsRes.json();
           const fetchedModels: DynamicModel[] = data.models || [];
           setModels(fetchedModels);
-          // Set default model
           if (fetchedModels.length > 0) {
             const defaultModel = fetchedModels.find((m) => m.id === 'openrouter/auto') || fetchedModels[0];
             setModel(defaultModel.id);
@@ -194,61 +203,87 @@ export default function OnboardingWizard() {
     } finally {
       setIsLoadingModels(false);
     }
-  }, [provider, apiKey]);
+  }, [provider1, apiKey1]);
 
-  // Fetch models when entering step 3
+  // Fetch models when entering step 2
   useEffect(() => {
-    if (step === 2) {
+    if (step === 1) {
       fetchModels();
     }
   }, [step, fetchModels]);
 
-  const handleTestConnection = useCallback(async () => {
-    setIsTesting(true);
-    setConnectionStatus('idle');
+  const handleTestConnection1 = useCallback(async () => {
+    setIsTesting1(true);
+    setConnectionStatus1('idle');
     try {
+      const perProviderKey = `${provider1}_apiKey`;
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          settings: { provider, apiKey },
+          settings: { provider: provider1, [perProviderKey]: apiKey1, apiKey: apiKey1 },
           testConnection: true,
         }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setConnectionStatus('success');
-        toast.success('Connection successful', {
-          description: `Connected to ${PROVIDERS[provider].name}`,
-        });
+        setConnectionStatus1('success');
+        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[provider1].name}` });
       } else {
-        setConnectionStatus('error');
-        toast.error('Connection failed', {
-          description: data.error || 'Could not connect to the provider.',
-        });
+        setConnectionStatus1('error');
+        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
       }
     } catch {
-      setConnectionStatus('error');
-      toast.error('Connection failed', {
-        description: 'Network error. Please check your API key.',
-      });
+      setConnectionStatus1('error');
+      toast.error('Connection failed');
     } finally {
-      setIsTesting(false);
+      setIsTesting1(false);
     }
-  }, [provider, apiKey]);
+  }, [provider1, apiKey1]);
+
+  const handleTestConnection2 = useCallback(async () => {
+    setIsTesting2(true);
+    setConnectionStatus2('idle');
+    try {
+      const perProviderKey = `${provider2}_apiKey`;
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { provider: provider2, [perProviderKey]: apiKey2, apiKey: apiKey2 },
+          testConnection: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setConnectionStatus2('success');
+        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[provider2].name}` });
+      } else {
+        setConnectionStatus2('error');
+        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
+      }
+    } catch {
+      setConnectionStatus2('error');
+      toast.error('Connection failed');
+    } finally {
+      setIsTesting2(false);
+    }
+  }, [provider2, apiKey2]);
 
   const handleComplete = useCallback(async () => {
     setIsSaving(true);
     try {
       const settings = {
-        provider,
-        apiKey,
+        provider: provider1,
+        provider2,
+        [`${provider1}_apiKey`]: apiKey1,
+        [`${provider2}_apiKey`]: apiKey2,
+        apiKey: apiKey1, // Legacy compat
         model,
         temperature: String(temperature),
         maxTokens: String(maxTokens),
       };
 
-      // Save to API
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -256,31 +291,26 @@ export default function OnboardingWizard() {
       });
 
       if (res.ok) {
-        // Update Zustand store
         setSettings(settings);
         setSelectedModel(model);
         setIsOnboarded(true);
         toast.success('Setup complete!', {
-          description: `You're all set with ${PROVIDERS[provider].name} — ${model}`,
+          description: `You're all set with ${PROVIDERS[provider1].name} — ${model}`,
         });
       } else {
-        toast.error('Failed to save settings', {
-          description: 'Please try again.',
-        });
+        toast.error('Failed to save settings');
       }
     } catch {
-      toast.error('Failed to save settings', {
-        description: 'Network error. Please try again.',
-      });
+      toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
-  }, [provider, apiKey, model, temperature, maxTokens, setSettings, setIsOnboarded, setSelectedModel]);
+  }, [provider1, provider2, apiKey1, apiKey2, model, temperature, maxTokens, setSettings, setIsOnboarded, setSelectedModel]);
 
   const canGoNext = step === 0
     ? true
     : step === 1
-      ? apiKey.length > 0 && connectionStatus === 'success'
+      ? apiKey1.length > 0 && connectionStatus1 === 'success'
       : true;
 
   return (
@@ -289,7 +319,6 @@ export default function OnboardingWizard() {
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute left-1/4 top-1/4 size-96 rounded-full bg-emerald-500/5 blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 size-96 rounded-full bg-emerald-600/5 blur-3xl" />
-        {/* Grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -356,16 +385,25 @@ export default function OnboardingWizard() {
                 exit="exit"
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
-                <Step2ApiKey
-                  provider={provider}
-                  apiKey={apiKey}
-                  showApiKey={showApiKey}
-                  isTesting={isTesting}
-                  connectionStatus={connectionStatus}
-                  onProviderChange={handleProviderChange}
-                  onApiKeyChange={setApiKey}
-                  onShowApiKeyChange={setShowApiKey}
-                  onTestConnection={handleTestConnection}
+                <Step2ApiKeys
+                  provider1={provider1}
+                  provider2={provider2}
+                  apiKey1={apiKey1}
+                  apiKey2={apiKey2}
+                  showApiKey1={showApiKey1}
+                  showApiKey2={showApiKey2}
+                  isTesting1={isTesting1}
+                  isTesting2={isTesting2}
+                  connectionStatus1={connectionStatus1}
+                  connectionStatus2={connectionStatus2}
+                  onProvider1Change={handleProvider1Change}
+                  onProvider2Change={handleProvider2Change}
+                  onApiKey1Change={setApiKey1}
+                  onApiKey2Change={setApiKey2}
+                  onShowApiKey1Change={setShowApiKey1}
+                  onShowApiKey2Change={setShowApiKey2}
+                  onTestConnection1={handleTestConnection1}
+                  onTestConnection2={handleTestConnection2}
                 />
               </motion.div>
             )}
@@ -380,7 +418,7 @@ export default function OnboardingWizard() {
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
                 <Step3ModelSelection
-                  provider={provider}
+                  provider={provider1}
                   model={model}
                   models={models}
                   isLoadingModels={isLoadingModels}
@@ -485,7 +523,7 @@ function Step1Welcome() {
         transition={{ delay: 0.3 }}
         className="mb-8 text-sm text-zinc-400"
       >
-        Your intelligent coding companion. Set up your AI provider to get started.
+        Your intelligent coding companion. Set up two AI providers to get started with flexibility.
       </motion.p>
 
       {/* Feature highlights */}
@@ -514,30 +552,48 @@ function Step1Welcome() {
   );
 }
 
-// ─── Step 2: API Key Input ───────────────────────────────────────────────────
+// ─── Step 2: Two API Key Inputs ──────────────────────────────────────────────
 
 interface Step2Props {
-  provider: ProviderKey;
-  apiKey: string;
-  showApiKey: boolean;
-  isTesting: boolean;
-  connectionStatus: 'idle' | 'success' | 'error';
-  onProviderChange: (provider: string) => void;
-  onApiKeyChange: (key: string) => void;
-  onShowApiKeyChange: (show: boolean) => void;
-  onTestConnection: () => void;
+  provider1: ProviderKey;
+  provider2: ProviderKey;
+  apiKey1: string;
+  apiKey2: string;
+  showApiKey1: boolean;
+  showApiKey2: boolean;
+  isTesting1: boolean;
+  isTesting2: boolean;
+  connectionStatus1: 'idle' | 'success' | 'error';
+  connectionStatus2: 'idle' | 'success' | 'error';
+  onProvider1Change: (provider: string) => void;
+  onProvider2Change: (provider: string) => void;
+  onApiKey1Change: (key: string) => void;
+  onApiKey2Change: (key: string) => void;
+  onShowApiKey1Change: (show: boolean) => void;
+  onShowApiKey2Change: (show: boolean) => void;
+  onTestConnection1: () => void;
+  onTestConnection2: () => void;
 }
 
-function Step2ApiKey({
-  provider,
-  apiKey,
-  showApiKey,
-  isTesting,
-  connectionStatus,
-  onProviderChange,
-  onApiKeyChange,
-  onShowApiKeyChange,
-  onTestConnection,
+function Step2ApiKeys({
+  provider1,
+  provider2,
+  apiKey1,
+  apiKey2,
+  showApiKey1,
+  showApiKey2,
+  isTesting1,
+  isTesting2,
+  connectionStatus1,
+  connectionStatus2,
+  onProvider1Change,
+  onProvider2Change,
+  onApiKey1Change,
+  onApiKey2Change,
+  onShowApiKey1Change,
+  onShowApiKey2Change,
+  onTestConnection1,
+  onTestConnection2,
 }: Step2Props) {
   return (
     <div className="space-y-4">
@@ -546,58 +602,41 @@ function Step2ApiKey({
         <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20">
           <Zap className="size-5 text-emerald-400" />
         </div>
-        <h2 className="text-lg font-semibold text-zinc-100">Connect your AI Provider</h2>
+        <h2 className="text-lg font-semibold text-zinc-100">Connect your AI Providers</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          Choose a provider and enter your API key to get started.
+          Set up a primary and secondary provider for maximum flexibility.
         </p>
       </div>
 
-      {/* Quick Provider Cards */}
-      <QuickProviderCards selected={provider} onSelect={onProviderChange} />
-
-      {/* Full Provider Selector */}
-      <div className="space-y-2">
-        <Label className="text-zinc-300 text-xs">Or select from all providers</Label>
-        <Select value={provider} onValueChange={onProviderChange}>
+      {/* Primary Provider Section */}
+      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="size-2 rounded-full bg-emerald-500" />
+          <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Primary Provider (Active)</span>
+          <span className="text-base">{PROVIDERS[provider1].icon}</span>
+        </div>
+        <Select value={provider1} onValueChange={onProvider1Change}>
           <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
           <SelectContent className="bg-zinc-800 border-zinc-700">
-            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][]).map(
-              ([key, info]) => (
-                <SelectItem
-                  key={key}
-                  value={key}
-                  className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
-                >
+            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
+              .filter(([key]) => key !== provider2)
+              .map(([key, info]) => (
+                <SelectItem key={key} value={key} className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100">
                   <span className="mr-2">{info.icon}</span>
                   {info.name}
                 </SelectItem>
-              )
-            )}
+              ))}
           </SelectContent>
         </Select>
-        {/* Active provider indicator */}
-        <div className="flex items-center gap-2">
-          <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs text-zinc-500">
-            Active: {PROVIDERS[provider].name}
-            {provider === 'openrouter' && ' (Recommended — supports all models)'}
-            {provider === 'opencode' && ' (Free & paid models)'}
-          </span>
-        </div>
-      </div>
-
-      {/* API Key Input */}
-      <div className="space-y-2">
-        <Label className="text-zinc-300 text-xs">API Key</Label>
         <div className="relative">
           <Input
-            type={showApiKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={(e) => onApiKeyChange(e.target.value)}
-            placeholder={PROVIDERS[provider].keyHint || 'sk-...'}
-            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm focus-visible:border-emerald-500/50 focus-visible:ring-emerald-500/20"
+            type={showApiKey1 ? 'text' : 'password'}
+            value={apiKey1}
+            onChange={(e) => onApiKey1Change(e.target.value)}
+            placeholder={PROVIDERS[provider1].keyHint || 'sk-...'}
+            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm focus-visible:border-emerald-500/50"
             autoFocus
           />
           <Button
@@ -605,70 +644,100 @@ function Step2ApiKey({
             variant="ghost"
             size="icon"
             className="absolute right-1 top-1/2 -translate-y-1/2 size-7 text-zinc-500 hover:text-zinc-300"
-            onClick={() => onShowApiKeyChange(!showApiKey)}
+            onClick={() => onShowApiKey1Change(!showApiKey1)}
           >
-            {showApiKey ? (
-              <EyeOff className="size-3.5" />
-            ) : (
-              <Eye className="size-3.5" />
-            )}
+            {showApiKey1 ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
           </Button>
         </div>
-        {!apiKey && (
-          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5">
-            <AlertCircle className="size-3 text-amber-400 shrink-0" />
-            <span className="text-xs text-amber-300/80">You need an API key to use AI models. See the guide below ↓</span>
-          </div>
+        {apiKey1 && connectionStatus1 !== 'success' && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-300 hover:bg-zinc-700 h-8 text-xs"
+            onClick={onTestConnection1}
+            disabled={isTesting1}
+          >
+            {isTesting1 ? <><Loader2 className="mr-1 size-3 animate-spin" /> Testing...</> : 'Test Connection'}
+          </Button>
         )}
-        <p className="text-xs text-zinc-600">
-          Your {PROVIDERS[provider].name} API key. Used only to call {PROVIDERS[provider].name} directly from the backend.
-        </p>
-      </div>
-
-      {/* API Key Guide */}
-      <ApiKeyGuide provider={provider} />
-
-      {/* Test Connection */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          className="bg-zinc-800/50 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 h-8"
-          onClick={onTestConnection}
-          disabled={isTesting || !apiKey}
-        >
-          {isTesting ? (
-            <>
-              <Loader2 className="size-3.5 animate-spin" />
-              Testing...
-            </>
-          ) : connectionStatus === 'success' ? (
-            <>
-              <CheckCircle2 className="size-3.5 text-emerald-400" />
-              Connected
-            </>
-          ) : connectionStatus === 'error' ? (
-            <>
-              <AlertCircle className="size-3.5 text-red-400" />
-              Failed — Retry
-            </>
-          ) : (
-            'Test Connection'
-          )}
-        </Button>
-        {connectionStatus === 'success' && (
-          <span className="text-xs text-emerald-400 flex items-center gap-1">
-            <CheckCircle2 className="size-3" />
-            Connected to {PROVIDERS[provider].name}
+        {connectionStatus1 === 'success' && (
+          <span className="flex items-center gap-1 text-xs text-emerald-400">
+            <CheckCircle2 className="size-3" /> Connected to {PROVIDERS[provider1].name}
           </span>
         )}
-        {connectionStatus === 'error' && (
-          <span className="text-xs text-red-400 flex items-center gap-1">
-            <AlertCircle className="size-3" />
-            Connection failed
+        {connectionStatus1 === 'error' && (
+          <span className="flex items-center gap-1 text-xs text-red-400">
+            <AlertCircle className="size-3" /> Connection failed
           </span>
         )}
       </div>
+
+      {/* Secondary Provider Section */}
+      <div className="rounded-lg border border-zinc-700 bg-zinc-800/20 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="size-2 rounded-full bg-zinc-500" />
+          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Secondary Provider (Backup)</span>
+          <span className="text-base">{PROVIDERS[provider2].icon}</span>
+          <span className="ml-auto text-[9px] text-zinc-600">Optional</span>
+        </div>
+        <Select value={provider2} onValueChange={onProvider2Change}>
+          <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
+            <SelectValue placeholder="Select provider" />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-800 border-zinc-700">
+            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
+              .filter(([key]) => key !== provider1)
+              .map(([key, info]) => (
+                <SelectItem key={key} value={key} className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100">
+                  <span className="mr-2">{info.icon}</span>
+                  {info.name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <div className="relative">
+          <Input
+            type={showApiKey2 ? 'text' : 'password'}
+            value={apiKey2}
+            onChange={(e) => onApiKey2Change(e.target.value)}
+            placeholder={PROVIDERS[provider2].keyHint || 'sk-...'}
+            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm focus-visible:border-emerald-500/50"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 top-1/2 -translate-y-1/2 size-7 text-zinc-500 hover:text-zinc-300"
+            onClick={() => onShowApiKey2Change(!showApiKey2)}
+          >
+            {showApiKey2 ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+          </Button>
+        </div>
+        {apiKey2 && connectionStatus2 !== 'success' && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-300 hover:bg-zinc-700 h-8 text-xs"
+            onClick={onTestConnection2}
+            disabled={isTesting2}
+          >
+            {isTesting2 ? <><Loader2 className="mr-1 size-3 animate-spin" /> Testing...</> : 'Test Connection'}
+          </Button>
+        )}
+        {connectionStatus2 === 'success' && (
+          <span className="flex items-center gap-1 text-xs text-emerald-400">
+            <CheckCircle2 className="size-3" /> Connected to {PROVIDERS[provider2].name}
+          </span>
+        )}
+        {connectionStatus2 === 'error' && (
+          <span className="flex items-center gap-1 text-xs text-red-400">
+            <AlertCircle className="size-3" /> Connection failed
+          </span>
+        )}
+      </div>
+
+      {/* API Key Guide for primary */}
+      <ApiKeyGuide provider={provider1} compact />
     </div>
   );
 }
