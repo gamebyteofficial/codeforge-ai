@@ -618,10 +618,10 @@ function FileCreateBar({
   const [createdCount, setCreatedCount] = useState(0);
   const parsedFiles = parseFilesFromResponse(content);
   const { currentProject, addFile, setCurrentFile, updateFile } = useAppStore();
+  const hasAutoTriggered = useRef(false);
 
-  if (parsedFiles.length === 0) return null;
-
-  const handleCreateFiles = async () => {
+  const handleCreateFiles = useCallback(async () => {
+    if (parsedFiles.length === 0) return;
     setIsCreating(true);
     try {
       const res = await fetch('/api/files/batch', {
@@ -656,7 +656,6 @@ function FileCreateBar({
 
       // Update the store with all created files
       for (const file of createdFiles) {
-        // Check if file already exists in store
         const existing = useAppStore.getState().files.find((f) => f.id === file.id);
         if (existing) {
           updateFile(file.id, file);
@@ -697,12 +696,28 @@ function FileCreateBar({
       setCreatedCount(data.created + data.updated);
       setIsCreated(true);
       onFilesCreated(createdFiles);
+
+      toast.success(`${data.created + data.updated} file${(data.created + data.updated) !== 1 ? 's' : ''} auto-created`, {
+        description: createdFiles.map((f) => f.name).join(', '),
+        duration: 4000,
+      });
     } catch (error) {
       console.error('Failed to create files:', error);
+      toast.error('Failed to auto-create files');
     } finally {
       setIsCreating(false);
     }
-  };
+  }, [parsedFiles, currentProject, addFile, setCurrentFile, updateFile, onFilesCreated]);
+
+  // Auto-trigger file creation on mount
+  useEffect(() => {
+    if (!hasAutoTriggered.current && parsedFiles.length > 0) {
+      hasAutoTriggered.current = true;
+      handleCreateFiles();
+    }
+  }, [handleCreateFiles, parsedFiles.length]);
+
+  if (parsedFiles.length === 0) return null;
 
   return (
     <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-2.5">
@@ -712,8 +727,40 @@ function FileCreateBar({
             <>
               <FileCheck2 className="size-4 shrink-0 text-emerald-400" />
               <span className="text-xs text-emerald-400 font-medium">
-                {createdCount} file{createdCount !== 1 ? 's' : ''} created successfully!
+                {createdCount} file{createdCount !== 1 ? 's' : ''} auto-created!
               </span>
+              <div className="flex gap-1 overflow-hidden">
+                {parsedFiles.slice(0, 4).map((f) => (
+                  <span
+                    key={f.filePath}
+                    className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-mono text-emerald-400"
+                  >
+                    {f.fileName}
+                  </span>
+                ))}
+                {parsedFiles.length > 4 && (
+                  <span className="text-[10px] text-zinc-500">
+                    +{parsedFiles.length - 4} more
+                  </span>
+                )}
+              </div>
+            </>
+          ) : isCreating ? (
+            <>
+              <Loader2 className="size-4 shrink-0 text-emerald-400 animate-spin" />
+              <span className="text-xs text-zinc-300">
+                Auto-creating {parsedFiles.length} file{parsedFiles.length !== 1 ? 's' : ''}...
+              </span>
+              <div className="flex gap-1 overflow-hidden">
+                {parsedFiles.slice(0, 4).map((f) => (
+                  <span
+                    key={f.filePath}
+                    className="shrink-0 rounded bg-zinc-700/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400"
+                  >
+                    {f.fileName}
+                  </span>
+                ))}
+              </div>
             </>
           ) : (
             <>
@@ -739,24 +786,15 @@ function FileCreateBar({
             </>
           )}
         </div>
-        {!isCreated && (
+        {!isCreated && !isCreating && (
           <Button
             size="sm"
             onClick={handleCreateFiles}
             disabled={isCreating}
             className="h-7 gap-1.5 rounded-md bg-emerald-600 px-3 text-xs text-white hover:bg-emerald-500 disabled:opacity-50"
           >
-            {isCreating ? (
-              <>
-                <Loader2 className="size-3 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <FolderCheck className="size-3" />
-                Create Files
-              </>
-            )}
+            <FolderCheck className="size-3" />
+            Create Files
           </Button>
         )}
       </div>
@@ -1207,16 +1245,8 @@ export default function ChatPanel() {
         streamingContentRef.current = '';
         abortControllerRef.current = null;
 
-        // Show toast if files were detected in the response
-        if (finalContentForDetection) {
-          const detectedFiles = parseFilesFromResponse(finalContentForDetection);
-          if (detectedFiles.length > 0) {
-            toast.info(`${detectedFiles.length} file${detectedFiles.length > 1 ? 's' : ''} detected in AI response`, {
-              description: detectedFiles.map((f) => f.fileName).join(', '),
-              duration: 5000,
-            });
-          }
-        }
+        // Files are now auto-created by FileCreateBar component
+        // No need for toast here — FileCreateBar handles it
       }
     },
     [

@@ -245,7 +245,7 @@ export const useAppStore = create<AppState>((set) => ({
   setIsOnboarded: (onboarded) => set({ isOnboarded: onboarded }),
 
   // Preview
-  isPreviewOpen: false,
+  isPreviewOpen: true,
   setIsPreviewOpen: (open) => set({ isPreviewOpen: open }),
   previewFiles: { html: '', css: '', js: '' },
   setPreviewFiles: (files) => set({ previewFiles: files }),

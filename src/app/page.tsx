@@ -80,6 +80,47 @@ export default function Home() {
     checkOnboarding();
   }, [setIsOnboarded, setSettings, setSelectedModel]);
 
+  // Ensure a default project exists for file creation
+  useEffect(() => {
+    const ensureProject = async () => {
+      try {
+        // Check if there's already a current project
+        const { currentProject, setCurrentProject } = useAppStore.getState();
+        if (currentProject) return;
+
+        // Try to fetch existing projects
+        const res = await fetch('/api/projects');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.projects && data.projects.length > 0) {
+            // Use the first existing project
+            setCurrentProject(data.projects[0]);
+            return;
+          }
+        }
+
+        // No projects exist — create a default one
+        const createRes = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'My Project',
+            description: 'Default project for CodeForge AI',
+            language: 'typescript',
+          }),
+        });
+
+        if (createRes.ok) {
+          const createData = await createRes.json();
+          setCurrentProject(createData.project);
+        }
+      } catch (error) {
+        console.error('Failed to ensure default project:', error);
+      }
+    };
+    ensureProject();
+  }, [isOnboarded]);
+
   // Show onboarding wizard if not onboarded
   if (!isOnboarded) {
     return (
