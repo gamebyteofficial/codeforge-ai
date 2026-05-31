@@ -17,6 +17,7 @@ import {
   Search,
 } from 'lucide-react';
 import { useAppStore, type Memory } from '@/store';
+import { useMemoryState, useProjectState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -494,7 +495,10 @@ function FilterBar({
 // ---------------------------------------------------------------------------
 
 export default function MemoryViewer() {
-  const { memories, setMemories, addMemory, currentProject } = useAppStore();
+  const memories = useMemoryState(s => s.memories);
+  const setMemories = useMemoryState(s => s.setMemories);
+  const addMemory = useMemoryState(s => s.addMemory);
+  const currentProject = useProjectState(s => s.currentProject);
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [isLoading, setIsLoading] = useState(false);

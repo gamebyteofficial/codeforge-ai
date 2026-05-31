@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -33,6 +33,7 @@ import {
   FileCheck2,
 } from 'lucide-react';
 import { useAppStore, type AgentType, type ProjectFile } from '@/store';
+import { useStore, useChatState, useFileState, useUIState, useProjectState } from '@/store/hooks';
 import { parseFilesFromResponse, type ParsedFile } from '@/lib/file-parser';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -258,7 +259,7 @@ function CodeBlock({
 // MarkdownRenderer – renders AI message content
 // ---------------------------------------------------------------------------
 
-function MarkdownRenderer({ content, onApplyCode }: { content: string; onApplyCode?: (code: string) => void }) {
+const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, onApplyCode }: { content: string; onApplyCode?: (code: string) => void }) {
   return (
     <ReactMarkdown
       components={{
@@ -343,7 +344,7 @@ function MarkdownRenderer({ content, onApplyCode }: { content: string; onApplyCo
       {content}
     </ReactMarkdown>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Model Selector Popover – fetches models dynamically from /api/models
@@ -360,7 +361,7 @@ function ModelSelector({
   const [models, setModels] = useState<DynamicModel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<string>('openrouter');
-  const { settings } = useAppStore();
+  const settings = useStore(s => s.settings);
 
   const fetchModels = useCallback(async () => {
     setIsLoading(true);
@@ -492,15 +493,13 @@ function ModelSelector({
 // ---------------------------------------------------------------------------
 
 function ChatHeader() {
-  const {
-    currentConversation,
-    setCurrentConversation,
-    isChatLoading,
-    selectedModel,
-    setSelectedModel,
-    settings,
-    setSettings,
-  } = useAppStore();
+  const currentConversation = useChatState(s => s.currentConversation);
+  const setCurrentConversation = useChatState(s => s.setCurrentConversation);
+  const isChatLoading = useChatState(s => s.isChatLoading);
+  const selectedModel = useUIState(s => s.selectedModel);
+  const setSelectedModel = useUIState(s => s.setSelectedModel);
+  const settings = useStore(s => s.settings);
+  const setSettings = useStore(s => s.setSettings);
 
   const totalTokens = currentConversation?.messages.reduce(
     (sum, m) => sum + (m.tokens ?? 0),
@@ -664,7 +663,10 @@ function FileCreateBar({
   const [isCreated, setIsCreated] = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
   const parsedFiles = parseFilesFromResponse(content);
-  const { currentProject, addFile, setCurrentFile, updateFile } = useAppStore();
+  const currentProject = useProjectState(s => s.currentProject);
+  const addFile = useFileState(s => s.addFile);
+  const setCurrentFile = useFileState(s => s.setCurrentFile);
+  const updateFile = useFileState(s => s.updateFile);
   const hasAutoTriggered = useRef(false);
 
   const handleCreateFiles = useCallback(async () => {
@@ -853,7 +855,7 @@ function FileCreateBar({
 // MessageBubble
 // ---------------------------------------------------------------------------
 
-function MessageBubble({
+const MessageBubble = React.memo(function MessageBubble({
   role,
   content,
   model,
@@ -931,7 +933,7 @@ function MessageBubble({
       </div>
     </motion.div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // MessageInput
@@ -946,7 +948,8 @@ function MessageInput({
 }) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { selectedAgent, setSelectedAgent } = useAppStore();
+  const selectedAgent = useUIState(s => s.selectedAgent);
+  const setSelectedAgent = useUIState(s => s.setSelectedAgent);
 
   // Auto-expand textarea
   useEffect(() => {
@@ -1046,18 +1049,16 @@ function MessageInput({
 // ---------------------------------------------------------------------------
 
 export default function ChatPanel() {
-  const {
-    currentConversation,
-    currentProject,
-    isChatLoading,
-    setIsChatLoading,
-    addMessageToConversation,
-    setCurrentConversation,
-    setCurrentFile,
-    currentFile,
-    selectedAgent,
-    selectedModel,
-  } = useAppStore();
+  const currentConversation = useChatState(s => s.currentConversation);
+  const currentProject = useProjectState(s => s.currentProject);
+  const isChatLoading = useChatState(s => s.isChatLoading);
+  const setIsChatLoading = useChatState(s => s.setIsChatLoading);
+  const addMessageToConversation = useChatState(s => s.addMessageToConversation);
+  const setCurrentConversation = useChatState(s => s.setCurrentConversation);
+  const setCurrentFile = useFileState(s => s.setCurrentFile);
+  const currentFile = useFileState(s => s.currentFile);
+  const selectedAgent = useUIState(s => s.selectedAgent);
+  const selectedModel = useUIState(s => s.selectedModel);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1191,6 +1192,8 @@ export default function ChatPanel() {
           const decoder = new TextDecoder();
           let fullContent = '';
           let lastModel = selectedModel;
+          const PREVIEW_THROTTLE_MS = 300;
+          const lastPreviewUpdateRef = { current: 0 };
 
           while (true) {
             const { done, value } = await reader.read();
@@ -1216,12 +1219,16 @@ export default function ChatPanel() {
                     setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
 
-                    // Update preview in real-time during streaming
-                    const previewContent = extractPreviewContent(fullContent);
-                    if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
-                      const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
-                      setPreviewFiles(previewContent);
-                      setIsPreviewOpen(true);
+                    // Throttled preview update during streaming (max once per 300ms)
+                    const now = Date.now();
+                    if (now - lastPreviewUpdateRef.current >= PREVIEW_THROTTLE_MS) {
+                      lastPreviewUpdateRef.current = now;
+                      const previewContent = extractPreviewContent(fullContent);
+                      if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+                        const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+                        setPreviewFiles(previewContent);
+                        setIsPreviewOpen(true);
+                      }
                     }
                   }
                   if (parsed.model) {
@@ -1233,6 +1240,14 @@ export default function ChatPanel() {
                 }
               }
             }
+          }
+
+          // Final preview extraction after streaming completes
+          const finalPreviewContent = extractPreviewContent(fullContent);
+          if (finalPreviewContent && (finalPreviewContent.html || finalPreviewContent.css || finalPreviewContent.js)) {
+            const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+            setPreviewFiles(finalPreviewContent);
+            setIsPreviewOpen(true);
           }
 
           // Finalize the streaming message
@@ -1332,6 +1347,8 @@ export default function ChatPanel() {
   );
 
   const messages = currentConversation?.messages ?? [];
+  // Memoize historical messages so only the streaming message re-renders
+  const historicalMessages = useMemo(() => messages, [messages.length, messages.map(m => m.id).join(',')]);
   const isEmpty = messages.length === 0 && !isChatLoading;
 
   return (
@@ -1352,7 +1369,7 @@ export default function ChatPanel() {
           >
             <div ref={scrollRef} className="py-2">
               <AnimatePresence initial={false}>
-                {messages.map((msg) => (
+                {historicalMessages.map((msg) => (
                   <MessageBubble
                     key={msg.id}
                     role={msg.role}

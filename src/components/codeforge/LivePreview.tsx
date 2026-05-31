@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useAppStore } from '@/store';
+import { usePreviewState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -17,6 +17,8 @@ import {
   Globe,
   Sparkles,
   Code2,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -28,13 +30,80 @@ const DEVICE_CONFIG: Record<DeviceSize, { width: string; maxWidth: string; label
   mobile: { width: '375px', maxWidth: '375px', label: 'Mobile' },
 };
 
+// ---------------------------------------------------------------------------
+// Error Boundary for iframe
+// ---------------------------------------------------------------------------
+
+type ErrorBoundaryProps = {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+};
+
+type ErrorBoundaryState = {
+  hasError: boolean;
+  error: Error | null;
+};
+
+class PreviewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('LivePreview error boundary caught:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) return this.props.fallback;
+      return (
+        <div className="flex h-full items-center justify-center p-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-red-500/10 ring-1 ring-red-500/20">
+              <X className="size-5 text-red-400" />
+            </div>
+            <p className="text-sm font-medium text-red-400">Preview Error</p>
+            <p className="text-xs text-zinc-500 max-w-[240px]">
+              {this.state.error?.message ?? 'An error occurred while rendering the preview.'}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1 text-xs"
+              onClick={() => this.setState({ hasError: false, error: null })}
+            >
+              Retry
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LivePreview component
+// ---------------------------------------------------------------------------
+
 export default function LivePreview() {
-  const { previewFiles, isPreviewOpen, setIsPreviewOpen } = useAppStore();
+  const previewFiles = usePreviewState(s => s.previewFiles);
+  const isPreviewOpen = usePreviewState(s => s.isPreviewOpen);
+  const setIsPreviewOpen = usePreviewState(s => s.setIsPreviewOpen);
   const [deviceSize, setDeviceSize] = useState<DeviceSize>('desktop');
   const [srcdoc, setSrcdoc] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastContentHashRef = useRef<string>('');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const buildSrcdoc = useCallback((html: string, css: string, js: string) => {
     return `<!DOCTYPE html>
@@ -42,7 +111,11 @@ export default function LivePreview() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>${css}</style>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    ${css}
+  </style>
 </head>
 <body>
   ${html}
@@ -59,7 +132,7 @@ export default function LivePreview() {
 
   const isEmpty = !previewFiles.html && !previewFiles.css && !previewFiles.js;
 
-  // Debounced auto-refresh when code changes
+  // Debounced auto-refresh when code changes — 300ms with content hash comparison
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -67,9 +140,17 @@ export default function LivePreview() {
 
     debounceRef.current = setTimeout(() => {
       if (!isEmpty) {
-        setSrcdoc(buildSrcdoc(previewFiles.html, previewFiles.css, previewFiles.js));
+        const contentHash = `${previewFiles.html.length}:${previewFiles.css.length}:${previewFiles.js.length}`;
+        if (contentHash !== lastContentHashRef.current) {
+          lastContentHashRef.current = contentHash;
+          setIsTransitioning(true);
+          setIsLoading(true);
+          setSrcdoc(buildSrcdoc(previewFiles.html, previewFiles.css, previewFiles.js));
+          // Fade out transition overlay after a short delay
+          setTimeout(() => setIsTransitioning(false), 150);
+        }
       }
-    }, 500);
+    }, 300);
 
     return () => {
       if (debounceRef.current) {
@@ -81,10 +162,27 @@ export default function LivePreview() {
   // Manual refresh
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
+    setIsLoading(true);
+    lastContentHashRef.current = '';
     setSrcdoc(buildSrcdoc(previewFiles.html, previewFiles.css, previewFiles.js));
     setIframeKey((k) => k + 1);
     setTimeout(() => setIsRefreshing(false), 600);
   }, [previewFiles, buildSrcdoc]);
+
+  // Pop out — open preview in a new browser tab using a data URI
+  const handlePopOut = useCallback(() => {
+    if (!srcdoc) return;
+    const blob = new Blob([srcdoc], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // Revoke after a short delay so the new tab can load it
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }, [srcdoc]);
+
+  // Handle iframe load event
+  const handleIframeLoad = useCallback(() => {
+    setIsLoading(false);
+  }, []);
 
   if (!isPreviewOpen) return null;
 
@@ -104,7 +202,7 @@ export default function LivePreview() {
           </div>
         </div>
 
-        {/* Right side: device toggle + refresh + close */}
+        {/* Right side: device toggle + refresh + pop-out + close */}
         <div className="flex items-center gap-0.5">
           {/* Device toggle buttons */}
           <div className="flex items-center rounded-md border border-zinc-700/40 bg-zinc-800/40 p-0.5">
@@ -134,6 +232,24 @@ export default function LivePreview() {
           </div>
 
           <div className="mx-1 h-4 w-px bg-zinc-800" />
+
+          {/* Pop-out button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-zinc-400 hover:text-white"
+                onClick={handlePopOut}
+                disabled={!srcdoc}
+              >
+                <ExternalLink className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Open in new tab
+            </TooltipContent>
+          </Tooltip>
 
           {/* Refresh button */}
           <Tooltip>
@@ -226,19 +342,39 @@ export default function LivePreview() {
         ) : (
           <div className="flex h-full justify-center p-2">
             <div
-              className="h-full rounded-lg border border-zinc-700/50 bg-white shadow-lg transition-all duration-300 ease-in-out overflow-hidden"
+              className="relative h-full rounded-lg border border-zinc-700/50 bg-white shadow-lg transition-all duration-300 ease-in-out overflow-hidden"
               style={{
                 width: deviceConfig.width,
                 maxWidth: deviceConfig.maxWidth,
               }}
             >
-              <iframe
-                key={iframeKey}
-                srcDoc={srcdoc}
-                sandbox="allow-scripts allow-modals"
-                title="Live Preview"
-                className="h-full w-full border-0"
-              />
+              {/* Loading indicator overlay */}
+              {isLoading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/60 backdrop-blur-sm">
+                  <div className="flex items-center gap-2 rounded-lg bg-zinc-800/90 px-3 py-2 ring-1 ring-zinc-700/50">
+                    <Loader2 className="size-4 animate-spin text-emerald-400" />
+                    <span className="text-xs font-medium text-zinc-300">Rendering...</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Smooth opacity transition on content change */}
+              <PreviewErrorBoundary>
+                <div
+                  className="h-full transition-opacity duration-200 ease-in-out"
+                  style={{ opacity: isTransitioning ? 0.7 : 1 }}
+                >
+                  <iframe
+                    ref={iframeRef}
+                    key={iframeKey}
+                    srcDoc={srcdoc}
+                    sandbox="allow-scripts allow-modals allow-same-origin"
+                    title="Live Preview"
+                    className="h-full w-full border-0"
+                    onLoad={handleIframeLoad}
+                  />
+                </div>
+              </PreviewErrorBoundary>
             </div>
           </div>
         )}

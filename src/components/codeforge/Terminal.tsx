@@ -17,6 +17,7 @@ import {
   Info,
 } from 'lucide-react';
 import { useAppStore, type TerminalLine, type BottomTab } from '@/store';
+import { useTerminalState, useUIState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -327,15 +328,13 @@ function OutputPanel({ lines }: { lines: TerminalLine[] }) {
 // ---------------------------------------------------------------------------
 
 export default function Terminal() {
-  const {
-    terminalLines,
-    addTerminalLine,
-    clearTerminal,
-    bottomTab,
-    setBottomTab,
-    isBottomPanelOpen,
-    setIsBottomPanelOpen,
-  } = useAppStore();
+  const terminalLines = useTerminalState(s => s.terminalLines);
+  const addTerminalLine = useTerminalState(s => s.addTerminalLine);
+  const clearTerminal = useTerminalState(s => s.clearTerminal);
+  const bottomTab = useUIState(s => s.bottomTab);
+  const setBottomTab = useUIState(s => s.setBottomTab);
+  const isBottomPanelOpen = useUIState(s => s.isBottomPanelOpen);
+  const setIsBottomPanelOpen = useUIState(s => s.setIsBottomPanelOpen);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);

@@ -1,16 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense, useState, useCallback, useRef } from 'react';
 import ChatPanel from '@/components/codeforge/ChatPanel';
 import CodeEditor from '@/components/codeforge/CodeEditor';
-import MemoryViewer from '@/components/codeforge/MemoryViewer';
 import FileExplorer from '@/components/codeforge/FileExplorer';
-import TaskTracker from '@/components/codeforge/TaskTracker';
-import Terminal from '@/components/codeforge/Terminal';
 import TopBar from '@/components/codeforge/TopBar';
 import SettingsModal from '@/components/codeforge/SettingsModal';
 import OnboardingWizard from '@/components/codeforge/OnboardingWizard';
-import LivePreview from '@/components/codeforge/LivePreview';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,8 +20,11 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Wifi,
+  HardDrive,
 } from 'lucide-react';
 import { useAppStore, type SidebarTab } from '@/store';
+import { useUIState, useStore, useFileState, usePreviewState } from '@/store/hooks';
 import {
   Tooltip,
   TooltipContent,
@@ -33,31 +32,154 @@ import {
 } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 
+// --- Lazy loaded heavy components ---
+const MemoryViewer = lazy(() => import('@/components/codeforge/MemoryViewer'));
+const TaskTracker = lazy(() => import('@/components/codeforge/TaskTracker'));
+const Terminal = lazy(() => import('@/components/codeforge/Terminal'));
+const LivePreview = lazy(() => import('@/components/codeforge/LivePreview'));
+
+// --- Skeleton fallback for lazy panels ---
+function PanelSkeleton() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="flex flex-col items-center gap-2">
+        <div className="size-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        <span className="text-xs text-zinc-500">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+// --- Sidebar tab definitions ---
 const SIDEBAR_TABS: { value: SidebarTab; icon: typeof MessageSquare; label: string }[] = [
   { value: 'files', icon: FolderTree, label: 'Files' },
   { value: 'tasks', icon: ListChecks, label: 'Tasks' },
   { value: 'memory', icon: Brain, label: 'Memory' },
 ];
 
-export default function Home() {
-  const {
-    isSidebarOpen,
-    setIsSidebarOpen,
-    sidebarTab,
-    setSidebarTab,
-    isBottomPanelOpen,
-    setIsBottomPanelOpen,
-    isOnboarded,
-    setIsOnboarded,
-    isPreviewOpen,
-    setIsPreviewOpen,
-    settings,
-    setSettings,
-    setSelectedModel,
-    selectedModel,
-  } = useAppStore();
+// --- Latency state type ---
+type LatencyStatus = 'good' | 'moderate' | 'slow';
 
-  // Check if user has already completed onboarding (has API key in settings)
+export default function Home() {
+  const isSidebarOpen = useUIState(s => s.isSidebarOpen);
+  const setIsSidebarOpen = useUIState(s => s.setIsSidebarOpen);
+  const sidebarTab = useUIState(s => s.sidebarTab);
+  const setSidebarTab = useUIState(s => s.setSidebarTab);
+  const isBottomPanelOpen = useUIState(s => s.isBottomPanelOpen);
+  const setIsBottomPanelOpen = useUIState(s => s.setIsBottomPanelOpen);
+  const isOnboarded = useStore(s => s.isOnboarded);
+  const setIsOnboarded = useStore(s => s.setIsOnboarded);
+  const isPreviewOpen = usePreviewState(s => s.isPreviewOpen);
+  const setIsPreviewOpen = usePreviewState(s => s.setIsPreviewOpen);
+  const settings = useStore(s => s.settings);
+  const setSettings = useStore(s => s.setSettings);
+  const setSelectedModel = useUIState(s => s.setSelectedModel);
+  const selectedModel = useUIState(s => s.selectedModel);
+  const files = useFileState(s => s.files);
+  const setIsSettingsOpen = useUIState(s => s.setIsSettingsOpen);
+  const storeSetSidebarTab = useUIState(s => s.setSidebarTab);
+
+  // --- Connection latency tracking ---
+  const [latencyStatus, setLatencyStatus] = useState<LatencyStatus>('good');
+  const lastLatencyRef = useRef<number>(0);
+
+  // Measure latency periodically by pinging the settings API
+  useEffect(() => {
+    if (!isOnboarded) return;
+
+    const measureLatency = async () => {
+      try {
+        const start = performance.now();
+        const res = await fetch('/api/settings');
+        const elapsed = performance.now() - start;
+        lastLatencyRef.current = elapsed;
+
+        if (elapsed < 300) setLatencyStatus('good');
+        else if (elapsed < 800) setLatencyStatus('moderate');
+        else setLatencyStatus('slow');
+      } catch {
+        setLatencyStatus('slow');
+      }
+    };
+
+    measureLatency();
+    const interval = setInterval(measureLatency, 15000);
+    return () => clearInterval(interval);
+  }, [isOnboarded]);
+
+  // --- Memory usage tracking ---
+  const [memoryUsage, setMemoryUsage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOnboarded) return;
+
+    const updateMemory = () => {
+      // performance.memory is Chrome-only
+      const perf = performance as Performance & {
+        memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number };
+      };
+      if (perf.memory) {
+        const mb = (perf.memory.usedJSHeapSize / (1024 * 1024)).toFixed(0);
+        setMemoryUsage(`${mb}MB`);
+      }
+    };
+
+    updateMemory();
+    const interval = setInterval(updateMemory, 10000);
+    return () => clearInterval(interval);
+  }, [isOnboarded]);
+
+  // --- Preload components on hover ---
+  const handleTabHover = useCallback((tab: SidebarTab) => {
+    switch (tab) {
+      case 'memory':
+        import('@/components/codeforge/MemoryViewer');
+        break;
+      case 'tasks':
+        import('@/components/codeforge/TaskTracker');
+        break;
+      case 'files':
+        break; // Already eagerly loaded
+    }
+  }, []);
+
+  // --- Keyboard shortcuts ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+
+      // Ctrl/Cmd + B — Toggle sidebar
+      if (isMod && e.key === 'b') {
+        e.preventDefault();
+        setIsSidebarOpen(!useAppStore.getState().isSidebarOpen);
+      }
+
+      // Ctrl/Cmd + J — Toggle terminal
+      if (isMod && e.key === 'j') {
+        e.preventDefault();
+        setIsBottomPanelOpen(!useAppStore.getState().isBottomPanelOpen);
+      }
+
+      // Ctrl/Cmd + Shift + E — Focus file explorer
+      if (isMod && e.shiftKey && e.key === 'E') {
+        e.preventDefault();
+        const state = useAppStore.getState();
+        if (!state.isSidebarOpen) state.setIsSidebarOpen(true);
+        state.setSidebarTab('files');
+      }
+
+      // Escape — Close preview panel
+      if (e.key === 'Escape') {
+        const state = useAppStore.getState();
+        if (state.isPreviewOpen) state.setIsPreviewOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setIsSidebarOpen, setIsBottomPanelOpen]);
+
+  // --- Check if user has already completed onboarding ---
   useEffect(() => {
     const checkOnboarding = async () => {
       try {
@@ -80,7 +202,7 @@ export default function Home() {
     checkOnboarding();
   }, [setIsOnboarded, setSettings, setSelectedModel]);
 
-  // Ensure a default project exists for file creation
+  // --- Ensure a default project exists for file creation ---
   useEffect(() => {
     const ensureProject = async () => {
       try {
@@ -121,7 +243,18 @@ export default function Home() {
     ensureProject();
   }, [isOnboarded]);
 
-  // Show onboarding wizard if not onboarded
+  // --- File count from store ---
+  const fileCount = files.length;
+
+  // --- Latency dot color ---
+  const latencyColor =
+    latencyStatus === 'good'
+      ? 'bg-emerald-500'
+      : latencyStatus === 'moderate'
+        ? 'bg-yellow-500'
+        : 'bg-red-500';
+
+  // --- Show onboarding wizard if not onboarded ---
   if (!isOnboarded) {
     return (
       <>
@@ -163,6 +296,7 @@ export default function Home() {
                           <TooltipTrigger asChild>
                             <button
                               onClick={() => setSidebarTab(tab.value)}
+                              onMouseEnter={() => handleTabHover(tab.value)}
                               className={`flex size-8 items-center justify-center rounded-md transition-colors ${
                                 isActive
                                   ? 'bg-emerald-500/15 text-emerald-400'
@@ -196,11 +330,19 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Sidebar content */}
+                  {/* Sidebar content — lazy loaded panels wrapped in Suspense */}
                   <div className="flex-1 min-w-0 overflow-hidden">
                     {sidebarTab === 'files' && <FileExplorer />}
-                    {sidebarTab === 'tasks' && <TaskTracker />}
-                    {sidebarTab === 'memory' && <MemoryViewer />}
+                    {sidebarTab === 'tasks' && (
+                      <Suspense fallback={<PanelSkeleton />}>
+                        <TaskTracker />
+                      </Suspense>
+                    )}
+                    {sidebarTab === 'memory' && (
+                      <Suspense fallback={<PanelSkeleton />}>
+                        <MemoryViewer />
+                      </Suspense>
+                    )}
                   </div>
                 </div>
               </ResizablePanel>
@@ -251,24 +393,28 @@ export default function Home() {
                       </div>
                     </div>
                   </ResizablePanel>
-                  {/* Live Preview Panel */}
+                  {/* Live Preview Panel — lazy loaded */}
                   {isPreviewOpen && (
                     <>
                       <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors w-px" />
                       <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-                        <LivePreview />
+                        <Suspense fallback={<PanelSkeleton />}>
+                          <LivePreview />
+                        </Suspense>
                       </ResizablePanel>
                     </>
                   )}
                 </ResizablePanelGroup>
               </ResizablePanel>
 
-              {/* Bottom: Terminal */}
+              {/* Bottom: Terminal — lazy loaded */}
               {isBottomPanelOpen && (
                 <>
                   <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors h-px" />
                   <ResizablePanel defaultSize={35} minSize={15} maxSize={60}>
-                    <Terminal />
+                    <Suspense fallback={<PanelSkeleton />}>
+                      <Terminal />
+                    </Suspense>
                   </ResizablePanel>
                 </>
               )}
@@ -316,6 +462,15 @@ export default function Home() {
           {/* Separator */}
           <div className="h-3 w-px bg-zinc-800" />
 
+          {/* File count */}
+          <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+            <FolderTree className="size-3" />
+            {fileCount} {fileCount === 1 ? 'file' : 'files'}
+          </span>
+
+          {/* Separator */}
+          <div className="h-3 w-px bg-zinc-800" />
+
           {/* Project info */}
           <span className="text-[10px] text-zinc-600">
             CodeForge AI v1.0
@@ -333,10 +488,31 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Memory usage */}
+          {memoryUsage && (
+            <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+              <HardDrive className="size-3" />
+              {memoryUsage}
+            </span>
+          )}
+
+          {/* Connection latency indicator */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center gap-1.5 text-[10px] text-zinc-600 cursor-default">
+                <Wifi className="size-3" />
+                <span className={`size-1.5 rounded-full ${latencyColor} ${latencyStatus === 'good' ? 'animate-pulse' : ''}`} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              {latencyStatus === 'good' ? 'Connected' : latencyStatus === 'moderate' ? 'Slow connection' : 'Connection issues'}
+              {lastLatencyRef.current > 0 && ` (${Math.round(lastLatencyRef.current)}ms)`}
+            </TooltipContent>
+          </Tooltip>
+
           <span className="text-[10px] text-zinc-600">
             Powered by Z.ai
           </span>
-          <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
         </div>
       </footer>
 

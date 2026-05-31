@@ -20,6 +20,7 @@ import {
   FolderSearch,
 } from 'lucide-react';
 import { useAppStore, type ProjectFile } from '@/store';
+import { useFileState, useProjectState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -393,16 +394,14 @@ function EmptyState() {
 // ---------------------------------------------------------------------------
 
 export default function FileExplorer() {
-  const {
-    files,
-    currentFile,
-    currentProject,
-    setFiles,
-    setCurrentFile,
-    addFile,
-    removeFile,
-    updateFile,
-  } = useAppStore();
+  const files = useFileState(s => s.files);
+  const currentFile = useFileState(s => s.currentFile);
+  const currentProject = useProjectState(s => s.currentProject);
+  const setFiles = useFileState(s => s.setFiles);
+  const setCurrentFile = useFileState(s => s.setCurrentFile);
+  const addFile = useFileState(s => s.addFile);
+  const removeFile = useFileState(s => s.removeFile);
+  const updateFile = useFileState(s => s.updateFile);
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [creationMode, setCreationMode] = useState<CreationMode>(null);

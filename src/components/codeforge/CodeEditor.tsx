@@ -23,8 +23,15 @@ import {
   Settings,
   Code2,
   Play,
+  WrapText,
+  ZoomIn,
+  ZoomOut,
+  List,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import { useAppStore, type ProjectFile } from '@/store';
+import { useFileState, usePreviewState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -128,6 +135,36 @@ function getFileIcon(fileName: string) {
   }
 }
 
+/** Get the dot color for a file type indicator */
+function getFileTypeDotColor(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'json': return 'bg-amber-400';
+    case 'ts':
+    case 'tsx': return 'bg-blue-400';
+    case 'js':
+    case 'jsx': return 'bg-yellow-400';
+    case 'css':
+    case 'scss':
+    case 'less': return 'bg-pink-400';
+    case 'html':
+    case 'htm':
+    case 'svg': return 'bg-orange-400';
+    case 'md': return 'bg-zinc-400';
+    case 'py': return 'bg-green-400';
+    case 'sql':
+    case 'prisma': return 'bg-cyan-400';
+    case 'sh':
+    case 'bash':
+    case 'zsh':
+    case 'dockerfile': return 'bg-emerald-400';
+    case 'yaml':
+    case 'yml':
+    case 'toml': return 'bg-zinc-400';
+    default: return 'bg-zinc-500';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // EditorTab
 // ---------------------------------------------------------------------------
@@ -141,6 +178,8 @@ function EditorTab({
   isActive: boolean;
   onClose: () => void;
 }) {
+  const dotColor = getFileTypeDotColor(file.name);
+
   return (
     <div
       className={`group flex items-center gap-1.5 border-r border-zinc-800 px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -149,7 +188,8 @@ function EditorTab({
           : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-300'
       }`}
     >
-      {getFileIcon(file.name)}
+      {/* File type color dot */}
+      <span className={`size-2 shrink-0 rounded-full ${dotColor}`} />
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
         onClick={(e) => {
@@ -169,6 +209,30 @@ function EditorTab({
 // EditorToolbar
 // ---------------------------------------------------------------------------
 
+const FONT_SIZE_MIN = 10;
+const FONT_SIZE_MAX = 24;
+const FONT_SIZE_DEFAULT = 13;
+const FONT_SIZE_STEP = 1;
+
+interface EditorToolbarProps {
+  file: ProjectFile;
+  isEditing: boolean;
+  isSaving: boolean;
+  isDirty: boolean;
+  onToggleEdit: () => void;
+  onSave: () => void;
+  onCopy: () => void;
+  copied: boolean;
+  onPreview: () => void;
+  isPreviewable: boolean;
+  wordWrap: boolean;
+  onToggleWordWrap: () => void;
+  fontSize: number;
+  onFontSizeChange: (size: number) => void;
+  showLineNumbers: boolean;
+  onToggleLineNumbers: () => void;
+}
+
 function EditorToolbar({
   file,
   isEditing,
@@ -180,21 +244,17 @@ function EditorToolbar({
   copied,
   onPreview,
   isPreviewable,
-}: {
-  file: ProjectFile;
-  isEditing: boolean;
-  isSaving: boolean;
-  isDirty: boolean;
-  onToggleEdit: () => void;
-  onSave: () => void;
-  onCopy: () => void;
-  copied: boolean;
-  onPreview: () => void;
-  isPreviewable: boolean;
-}) {
+  wordWrap,
+  onToggleWordWrap,
+  fontSize,
+  onFontSizeChange,
+  showLineNumbers,
+  onToggleLineNumbers,
+}: EditorToolbarProps) {
   const language = getLanguageFromFileName(file.name);
   const lineCount = file.content.split('\n').length;
   const charCount = file.content.length;
+  const dotColor = getFileTypeDotColor(file.name);
 
   return (
     <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/60 px-3 py-1">
@@ -279,10 +339,91 @@ function EditorToolbar({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Open in Preview
+              Open in Preview ({navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl'}+Shift+P)
             </TooltipContent>
           </Tooltip>
         )}
+
+        <div className="mx-0.5 h-4 w-px bg-zinc-800" />
+
+        {/* Word wrap toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`size-7 ${
+                wordWrap
+                  ? 'text-emerald-400 hover:text-emerald-300'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              onClick={onToggleWordWrap}
+            >
+              <WrapText className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {wordWrap ? 'Word wrap: ON' : 'Word wrap: OFF'}
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Line numbers toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`size-7 ${
+                showLineNumbers
+                  ? 'text-emerald-400 hover:text-emerald-300'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              onClick={onToggleLineNumbers}
+            >
+              <List className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {showLineNumbers ? 'Line numbers: ON' : 'Line numbers: OFF'}
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="mx-0.5 h-4 w-px bg-zinc-800" />
+
+        {/* Font size controls */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-zinc-400 hover:text-white"
+              onClick={() => onFontSizeChange(Math.max(FONT_SIZE_MIN, fontSize - FONT_SIZE_STEP))}
+              disabled={fontSize <= FONT_SIZE_MIN}
+            >
+              <Minus className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Decrease font size</TooltipContent>
+        </Tooltip>
+
+        <span className="text-[10px] font-mono text-zinc-500 w-6 text-center tabular-nums">
+          {fontSize}
+        </span>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-zinc-400 hover:text-white"
+              onClick={() => onFontSizeChange(Math.min(FONT_SIZE_MAX, fontSize + FONT_SIZE_STEP))}
+              disabled={fontSize >= FONT_SIZE_MAX}
+            >
+              <Plus className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Increase font size</TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Right side info */}
@@ -298,7 +439,8 @@ function EditorToolbar({
           {lineCount} lines
         </span>
         <span>{charCount.toLocaleString()} chars</span>
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-zinc-400">
+        <span className="flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-zinc-400">
+          <span className={`size-1.5 rounded-full ${dotColor}`} />
           {language}
         </span>
       </div>
@@ -327,18 +469,29 @@ function EmptyState() {
 }
 
 // ---------------------------------------------------------------------------
+// Bracket pairs for auto-close
+// ---------------------------------------------------------------------------
+
+const BRACKET_PAIRS: Record<string, string> = {
+  '{': '}',
+  '(': ')',
+  '[': ']',
+  '"': '"',
+  "'": "'",
+  '`': '`',
+};
+
+// ---------------------------------------------------------------------------
 // CodeEditor (main export)
 // ---------------------------------------------------------------------------
 
 export default function CodeEditor() {
-  const {
-    currentFile,
-    setCurrentFile,
-    updateFile,
-    files,
-    setIsPreviewOpen,
-    setPreviewFiles,
-  } = useAppStore();
+  const currentFile = useFileState(s => s.currentFile);
+  const setCurrentFile = useFileState(s => s.setCurrentFile);
+  const updateFile = useFileState(s => s.updateFile);
+  const files = useFileState(s => s.files);
+  const setIsPreviewOpen = usePreviewState(s => s.setIsPreviewOpen);
+  const setPreviewFiles = usePreviewState(s => s.setPreviewFiles);
 
   // Local editing state
   const [editContent, setEditContent] = useState('');
@@ -346,6 +499,11 @@ export default function CodeEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Editor preference state
+  const [wordWrap, setWordWrap] = useState(true);
+  const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
+  const [showLineNumbers, setShowLineNumbers] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const codeAreaRef = useRef<HTMLDivElement>(null);
@@ -370,67 +528,7 @@ export default function CodeEditor() {
     }
   }, [isEditing]);
 
-  // Keyboard shortcut: Ctrl/Cmd + S to save
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault();
-        if (currentFile && isDirty) {
-          handleSave();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFile, isDirty, editContent]);
-
-  // ---- Check if current file is previewable (HTML/CSS/JS) ----
-
-  const isPreviewable = useCallback((fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-    return ['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx'].includes(ext);
-  }, []);
-
-  // ---- Handle opening preview with HTML/CSS/JS files from the project ----
-
-  const handleOpenPreview = useCallback(() => {
-    if (!currentFile) return;
-
-    // Find HTML, CSS, and JS files from the current project
-    const htmlFile = files.find(f => {
-      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-      return ['html', 'htm'].includes(ext) && !f.isFolder;
-    });
-    const cssFile = files.find(f => {
-      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-      return ['css', 'scss', 'less'].includes(ext) && !f.isFolder;
-    });
-    const jsFile = files.find(f => {
-      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-      return ['js', 'jsx', 'ts', 'tsx'].includes(ext) && !f.isFolder;
-    });
-
-    // Use current file content if it matches a type, otherwise use found files
-    const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
-    let html = htmlFile?.content ?? '';
-    let css = cssFile?.content ?? '';
-    let js = jsFile?.content ?? '';
-
-    // If the current file is one of these types, use its latest content
-    if (['html', 'htm'].includes(ext)) {
-      html = isDirty ? editContent : currentFile.content;
-    } else if (['css', 'scss', 'less'].includes(ext)) {
-      css = isDirty ? editContent : currentFile.content;
-    } else if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
-      js = isDirty ? editContent : currentFile.content;
-    }
-
-    setPreviewFiles({ html, css, js });
-    setIsPreviewOpen(true);
-  }, [currentFile, files, isDirty, editContent, setPreviewFiles, setIsPreviewOpen]);
-
-  // ---- Handlers ----
+  // ---- Keyboard shortcuts: Ctrl/Cmd+S to save, Ctrl/Cmd+Shift+P for preview ----
 
   const handleSave = useCallback(async () => {
     if (!currentFile || !isDirty) return;
@@ -485,6 +583,80 @@ export default function CodeEditor() {
     }
   }, [currentFile, isDirty, editContent, updateFile]);
 
+  // ---- Check if current file is previewable (HTML/CSS/JS) ----
+
+  const isPreviewable = useCallback((fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+    return ['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx'].includes(ext);
+  }, []);
+
+  // ---- Handle opening preview with HTML/CSS/JS files from the project ----
+
+  const handleOpenPreview = useCallback(() => {
+    if (!currentFile) return;
+
+    // Find HTML, CSS, and JS files from the current project
+    const htmlFile = files.find(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return ['html', 'htm'].includes(ext) && !f.isFolder;
+    });
+    const cssFile = files.find(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return ['css', 'scss', 'less'].includes(ext) && !f.isFolder;
+    });
+    const jsFile = files.find(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return ['js', 'jsx', 'ts', 'tsx'].includes(ext) && !f.isFolder;
+    });
+
+    // Use current file content if it matches a type, otherwise use found files
+    const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
+    let html = htmlFile?.content ?? '';
+    let css = cssFile?.content ?? '';
+    let js = jsFile?.content ?? '';
+
+    // If the current file is one of these types, use its latest content
+    if (['html', 'htm'].includes(ext)) {
+      html = isDirty ? editContent : currentFile.content;
+    } else if (['css', 'scss', 'less'].includes(ext)) {
+      css = isDirty ? editContent : currentFile.content;
+    } else if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
+      js = isDirty ? editContent : currentFile.content;
+    }
+
+    setPreviewFiles({ html, css, js });
+    setIsPreviewOpen(true);
+  }, [currentFile, files, isDirty, editContent, setPreviewFiles, setIsPreviewOpen]);
+
+  // Keyboard shortcut handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + S to save
+      if ((e.metaKey || e.ctrlKey) && e.key === 's' && !e.shiftKey) {
+        e.preventDefault();
+        if (currentFile && isDirty) {
+          handleSave();
+        }
+      }
+      // Ctrl/Cmd + Shift + P to open preview
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        if (currentFile && isPreviewable(currentFile.name)) {
+          handleOpenPreview();
+          toast({
+            title: 'Preview opened',
+            description: `${currentFile.name} opened in preview`,
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentFile, isDirty, handleSave, isPreviewable, handleOpenPreview]);
+
+  // ---- Handlers ----
+
   const handleToggleEdit = useCallback(() => {
     setIsEditing((prev) => !prev);
   }, []);
@@ -496,6 +668,90 @@ export default function CodeEditor() {
     },
     [currentFile],
   );
+
+  // Tab indentation handling in textarea
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = e.currentTarget;
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newValue = editContent.substring(0, start) + '  ' + editContent.substring(end);
+      setEditContent(newValue);
+      setIsDirty(newValue !== (currentFile?.content ?? ''));
+      // Set cursor position after the inserted tab
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+      });
+      return;
+    }
+
+    // Auto-close brackets
+    const closingBracket = BRACKET_PAIRS[e.key];
+    if (closingBracket && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // For quote characters, check if the next char is already the closing quote
+      if (e.key === '"' || e.key === "'" || e.key === '`') {
+        const nextChar = editContent[textarea.selectionStart];
+        if (nextChar === e.key) {
+          // Skip over the existing closing quote instead of inserting a new one
+          e.preventDefault();
+          textarea.selectionStart = textarea.selectionEnd = textarea.selectionStart + 1;
+          return;
+        }
+      }
+
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = editContent.substring(start, end);
+      const newValue =
+        editContent.substring(0, start) + e.key + selectedText + closingBracket + editContent.substring(end);
+      setEditContent(newValue);
+      setIsDirty(newValue !== (currentFile?.content ?? ''));
+      // Place cursor between the brackets
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+      });
+      return;
+    }
+
+    // Enter key — auto-indent: match the indentation of the current line
+    if (e.key === 'Enter') {
+      const start = textarea.selectionStart;
+      const currentLineStart = editContent.lastIndexOf('\n', start - 1) + 1;
+      const currentLine = editContent.substring(currentLineStart, start);
+      const indentMatch = currentLine.match(/^\s*/);
+      let indent = indentMatch ? indentMatch[0] : '';
+
+      // Extra indent after opening brace
+      const charBeforeCursor = editContent[start - 1];
+      const charAfterCursor = editContent[start];
+      if (charBeforeCursor === '{' && charAfterCursor === '}') {
+        e.preventDefault();
+        const newValue =
+          editContent.substring(0, start) + '\n' + indent + '  ' + '\n' + indent + editContent.substring(start);
+        setEditContent(newValue);
+        setIsDirty(newValue !== (currentFile?.content ?? ''));
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 1 + indent.length + 2;
+        });
+        return;
+      } else if (charBeforeCursor === '{' || charBeforeCursor === '(' || charBeforeCursor === '[') {
+        indent += '  ';
+      }
+
+      if (indent) {
+        e.preventDefault();
+        const newValue = editContent.substring(0, start) + '\n' + indent + editContent.substring(start);
+        setEditContent(newValue);
+        setIsDirty(newValue !== (currentFile?.content ?? ''));
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 1 + indent.length;
+        });
+      }
+    }
+  }, [editContent, currentFile]);
 
   const handleCopy = useCallback(async () => {
     const content = isEditing ? editContent : (currentFile?.content ?? '');
@@ -554,6 +810,12 @@ export default function CodeEditor() {
         copied={copied}
         onPreview={handleOpenPreview}
         isPreviewable={canPreview}
+        wordWrap={wordWrap}
+        onToggleWordWrap={() => setWordWrap((v) => !v)}
+        fontSize={fontSize}
+        onFontSizeChange={setFontSize}
+        showLineNumbers={showLineNumbers}
+        onToggleLineNumbers={() => setShowLineNumbers((v) => !v)}
       />
 
       {/* Code area — takes all remaining space */}
@@ -589,24 +851,30 @@ export default function CodeEditor() {
           /* ---- Edit mode: textarea ---- */
           <div className="relative flex" data-code-area>
             {/* Line numbers gutter */}
-            <div
-              className="sticky left-0 z-10 select-none bg-zinc-950/90 text-right font-mono text-[13px] leading-[1.6] text-zinc-600"
-              style={{ minWidth: '3.5em', padding: '1rem 0.75rem 1rem 0' }}
-              aria-hidden="true"
-            >
-              {editContent.split('\n').map((_, i) => (
-                <div key={i}>{i + 1}</div>
-              ))}
-            </div>
+            {showLineNumbers && (
+              <div
+                className="sticky left-0 z-10 select-none bg-zinc-950/90 text-right font-mono leading-[1.6] text-zinc-600"
+                style={{ minWidth: '3.5em', padding: '1rem 0.75rem 1rem 0', fontSize: `${fontSize}px` }}
+                aria-hidden="true"
+              >
+                {editContent.split('\n').map((_, i) => (
+                  <div key={i}>{i + 1}</div>
+                ))}
+              </div>
+            )}
 
             {/* Textarea */}
             <textarea
               ref={textareaRef}
               value={editContent}
               onChange={(e) => handleContentChange(e.target.value)}
-              className="flex-1 resize-none bg-transparent p-4 pl-2 font-mono text-[13px] leading-[1.6] text-zinc-100 outline-none placeholder-zinc-600"
+              onKeyDown={handleKeyDown}
+              className="flex-1 resize-none bg-transparent p-4 pl-2 font-mono leading-[1.6] text-zinc-100 outline-none placeholder-zinc-600"
               style={{
                 tabSize: 2,
+                fontSize: `${fontSize}px`,
+                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                overflowWrap: wordWrap ? 'break-word' : 'normal',
               }}
               spellCheck={false}
               autoComplete="off"
@@ -621,7 +889,7 @@ export default function CodeEditor() {
             <SyntaxHighlighter
               language={language}
               style={vscDarkPlus}
-              showLineNumbers={true}
+              showLineNumbers={showLineNumbers}
               lineNumberStyle={{
                 color: '#52525b',
                 minWidth: '3.5em',
@@ -631,12 +899,15 @@ export default function CodeEditor() {
                 margin: 0,
                 padding: '1rem',
                 background: 'transparent',
-                fontSize: '0.8125rem',
+                fontSize: `${fontSize}px`,
                 lineHeight: '1.6',
               }}
+              wrapLines={wordWrap}
+              wrapLongLines={wordWrap}
               codeTagProps={{
                 style: {
                   fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+                  whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                 },
               }}
             >

@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useAppStore, type Project } from '@/store';
+import { useProjectState, useUIState, useChatState, useTaskState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -38,16 +39,14 @@ import {
 } from '@/components/ui/select';
 
 export default function TopBar() {
-  const {
-    currentProject,
-    projects,
-    setCurrentProject,
-    setProjects,
-    setIsSettingsOpen,
-    isChatLoading,
-    currentConversation,
-    tasks,
-  } = useAppStore();
+  const currentProject = useProjectState(s => s.currentProject);
+  const projects = useProjectState(s => s.projects);
+  const setCurrentProject = useProjectState(s => s.setCurrentProject);
+  const setProjects = useProjectState(s => s.setProjects);
+  const setIsSettingsOpen = useUIState(s => s.setIsSettingsOpen);
+  const isChatLoading = useChatState(s => s.isChatLoading);
+  const currentConversation = useChatState(s => s.currentConversation);
+  const tasks = useTaskState(s => s.tasks);
 
   const [newProjectDialog, setNewProjectDialog] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');

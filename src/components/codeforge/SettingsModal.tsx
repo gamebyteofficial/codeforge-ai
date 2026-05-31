@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useAppStore } from '@/store';
+import { useUIState, useStore } from '@/store/hooks';
 import {
   Eye,
   EyeOff,
@@ -125,7 +126,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
 // ─── Settings Modal Component ────────────────────────────────────────────────
 
 export default function SettingsModal() {
-  const { isSettingsOpen, setIsSettingsOpen, settings, setSettings } = useAppStore();
+  const isSettingsOpen = useUIState(s => s.isSettingsOpen);
+  const setIsSettingsOpen = useUIState(s => s.setIsSettingsOpen);
+  const settings = useStore(s => s.settings);
+  const setSettings = useStore(s => s.setSettings);
 
   const [localSettings, setLocalSettings] = useState<Record<string, string>>({ ...settings });
   const [showApiKey, setShowApiKey] = useState(false);

@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { useUIState, useStore } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -113,7 +114,9 @@ const slideVariants = {
 // ─── OnboardingWizard Component ──────────────────────────────────────────────
 
 export default function OnboardingWizard() {
-  const { setSettings, setIsOnboarded, setSelectedModel } = useAppStore();
+  const setSettings = useStore(s => s.setSettings);
+  const setIsOnboarded = useStore(s => s.setIsOnboarded);
+  const setSelectedModel = useUIState(s => s.setSelectedModel);
 
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);

@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppStore, type Task } from '@/store';
+import { useTaskState, useProjectState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -516,8 +517,12 @@ function NewTaskDialog({
 // ---------------------------------------------------------------------------
 
 export default function TaskTracker() {
-  const { tasks, currentProject, setTasks, addTask, updateTask, removeTask } =
-    useAppStore();
+  const tasks = useTaskState(s => s.tasks);
+  const currentProject = useProjectState(s => s.currentProject);
+  const setTasks = useTaskState(s => s.setTasks);
+  const addTask = useTaskState(s => s.addTask);
+  const updateTask = useTaskState(s => s.updateTask);
+  const removeTask = useTaskState(s => s.removeTask);
 
   const [filter, setFilter] = useState<FilterKey>('all');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());

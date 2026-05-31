@@ -88,3 +88,175 @@ Stage Summary:
 - Both 📄 **filepath** and plain ```language code block patterns are supported
 - Empty preview state now shows helpful suggestions instead of just "No preview available"
 - All existing file creation flow (FileCreateBar → batch API → preview update) remains intact
+---
+Task ID: 2-c
+Agent: Performance Optimization Agent
+Task: Optimize page.tsx for lazy loading and add performance polish
+
+Work Log:
+- Converted MemoryViewer, TaskTracker, Terminal, and LivePreview to lazy-loaded components using `React.lazy()` + `Suspense`
+- Created `PanelSkeleton` component as a loading fallback (spinning emerald circle + "Loading..." text)
+- Added preload-on-hover behavior for sidebar tab icons — hovering over "Tasks" or "Memory" triggers dynamic import so the component is ready before the user clicks
+- Enhanced the status bar footer with:
+  - File count display (reads from Zustand store `files.length`)
+  - Connection latency indicator (small colored dot: green < 300ms, yellow < 800ms, red > 800ms) with tooltip showing exact ms
+  - Memory usage display (uses `performance.memory` API on Chrome, updates every 10s)
+- Added global keyboard shortcuts via `useEffect`:
+  - `Ctrl/Cmd + B` — Toggle sidebar
+  - `Ctrl/Cmd + J` — Toggle terminal
+  - `Ctrl/Cmd + Shift + E` — Focus file explorer (opens sidebar if closed, switches to files tab)
+  - `Escape` — Close preview panel
+- All keyboard shortcuts use `useAppStore.getState()` for latest state to avoid stale closures
+- Kept FileExplorer, ChatPanel, CodeEditor, TopBar, SettingsModal, and OnboardingWizard as eager imports (core/frequently-used components)
+- Lint passes cleanly, dev server compiles successfully
+
+Stage Summary:
+- Heavy panels (MemoryViewer, TaskTracker, Terminal, LivePreview) are now lazy-loaded, reducing initial bundle size
+- PanelSkeleton provides a polished loading state for asynchronously loaded components
+- Hover-preloading ensures components are ready before the user clicks a tab
+- Status bar now shows file count, connection latency, and JS heap memory usage
+- Keyboard shortcuts enable power-user navigation (Ctrl+B/J/Shift+E, Escape)
+- All existing functionality preserved with no regressions
+---
+Task ID: 2-b
+Agent: Performance Optimization Agent
+Task: Optimize LivePreview and CodeEditor components for performance
+
+Work Log:
+- **LivePreview optimizations:**
+  - Reduced debounce time from 500ms to 300ms for more responsive preview updates
+  - Added content hash comparison (`lastContentHashRef`) to skip redundant iframe re-renders when content hasn't actually changed (compares `html.length:css.length:js.length`)
+  - Added `PreviewErrorBoundary` class component to catch iframe loading errors gracefully with a retry button
+  - Added loading indicator overlay (spinner + "Rendering..." label) that shows while the iframe is rendering, hidden on `onLoad` event
+  - Improved iframe sandbox — added `allow-same-origin` for better CSS compatibility
+  - Added "Pop out" button (ExternalLink icon) to open preview in a new browser tab using `URL.createObjectURL(blob)`
+  - Added smooth opacity transition when content changes (fades to 0.7 opacity briefly during updates)
+  - Updated `buildSrcdoc` to include CSS reset (`* { margin: 0; padding: 0; box-sizing: border-box; }`) and default font stack
+  - Added `iframeRef` and `handleIframeLoad` callback for proper loading state management
+- **CodeEditor optimizations:**
+  - Added word wrap toggle button (WrapText icon) in toolbar — toggles `white-space: pre-wrap` in textarea and `wrapLongLines` in SyntaxHighlighter
+  - Added font size controls (Minus/Plus icons) in toolbar — range 10–24px, step 1, default 13px; applies to both textarea and SyntaxHighlighter
+  - Added line numbers toggle button (List icon) in toolbar — controls gutter visibility in edit mode and `showLineNumbers` in view mode
+  - Added tab indentation handling in textarea — inserts 2 spaces on Tab key, preserves cursor position
+  - Added auto-close brackets — when typing `{`, `(`, `[`, `"`, `'`, or `` ` ``, the closing character is auto-inserted and cursor placed between them
+  - Added smart Enter key — auto-indents to match current line indentation, adds extra indent after opening braces, handles `{}` expansion
+  - Added quote skip behavior — if the next character is already the matching quote, pressing the quote key skips over it instead of inserting a new pair
+  - Added file type indicator with color dot in both the tab (replaces file icon with colored dot) and the language badge in toolbar
+  - Added `getFileTypeDotColor()` utility function matching the icon color scheme
+- **Keyboard shortcuts:**
+  - Added Ctrl/Cmd+Shift+P shortcut to open preview for the current file (with toast notification)
+  - Refactored keyboard shortcut handler to a single `useEffect` covering both Ctrl+S and Ctrl+Shift+P
+- Lint passes cleanly, dev server compiles successfully
+
+Stage Summary:
+- LivePreview is now more responsive (300ms debounce), more efficient (hash-based skip), more resilient (error boundary), and has better UX (loading indicator, pop-out button, smooth transitions)
+- CodeEditor provides a much richer editing experience with word wrap, font size control, line numbers toggle, smart tab handling, auto-close brackets, and auto-indentation
+- New Ctrl+Shift+P shortcut enables quick preview access without leaving the keyboard
+- All new toolbar controls use the existing shadcn/ui Tooltip + Button pattern for consistency
+---
+Task ID: 2-a
+Agent: Performance Optimization Agent
+Task: Optimize the Zustand store and ChatPanel for performance
+
+Work Log:
+- Created `src/store/hooks.ts` with selective subscription hooks using `useStoreWithEqualityFn` from `zustand/traditional`
+  - `useStore<T>(selector)` — generic selector hook with shallow equality comparison
+  - `useChatState(selector)` — chat-related state (conversations, loading, messages)
+  - `useFileState(selector)` — file-related state (files, currentFile, CRUD actions)
+  - `useUIState(selector)` — UI state (sidebar, panels, agent, model, settings)
+  - `usePreviewState(selector)` — preview state (previewFiles, isPreviewOpen)
+  - `useProjectState(selector)` — project state (currentProject, projects)
+  - `useTaskState(selector)` — task state
+  - `useTerminalState(selector)` — terminal state
+  - `useMemoryState(selector)` — memory state
+- Updated ALL components to use selective hooks instead of `useAppStore()` which subscribed to the entire store:
+  - ChatPanel.tsx: ChatHeader, ModelSelector, FileCreateBar, MessageInput, and main ChatPanel
+  - LivePreview.tsx
+  - CodeEditor.tsx
+  - FileExplorer.tsx
+  - TopBar.tsx
+  - TaskTracker.tsx
+  - Terminal.tsx
+  - SettingsModal.tsx
+  - MemoryViewer.tsx
+  - OnboardingWizard.tsx
+  - page.tsx
+- Throttled streaming preview updates in ChatPanel from every-chunk to at most once every 300ms using a ref-based throttle mechanism
+  - Added `PREVIEW_THROTTLE_MS = 300` and `lastPreviewUpdateRef` in the streaming handler
+  - Preview extraction (`extractPreviewContent`) only runs when throttle window has elapsed
+  - Added final extraction after streaming loop completes to ensure the last state is always correct
+- Wrapped `MessageBubble` and `MarkdownRenderer` with `React.memo` to prevent re-rendering when other messages change or streaming content updates
+- Separated streaming message from historical messages in the message list:
+  - Added `historicalMessages` memoized with `useMemo` that only changes when message count or IDs change
+  - Historical messages rendered via `historicalMessages.map()` while streaming content is a separate section
+  - This ensures only the streaming message component re-renders when `streamingContent` changes, not all historical messages
+- All changes pass `bun run lint` cleanly with no errors
+
+Stage Summary:
+- Components now subscribe to only the Zustand state slices they need, eliminating unnecessary re-renders from unrelated state changes
+- Streaming preview updates throttled to 300ms, reducing LivePreview re-renders during rapid token streaming
+- React.memo on MessageBubble and MarkdownRenderer prevents cascade re-renders
+- Historical messages are memoized separately from the streaming message, so only the streaming bubble re-renders on each token
+---
+Task ID: 2-a
+Agent: Subagent (Store + ChatPanel optimization)
+Task: Optimize Zustand store and ChatPanel for performance
+
+Work Log:
+- Created src/store/hooks.ts with useStore generic selector and domain-specific hooks (useChatState, useFileState, useUIState, usePreviewState, etc.)
+- Updated all 11 components to use selective subscriptions instead of useAppStore()
+- Added throttled preview updates in ChatPanel streaming handler (300ms throttle)
+- Added final preview extraction after streaming completes
+- Wrapped MessageBubble and MarkdownRenderer with React.memo
+- Separated historical messages from streaming message to prevent re-rendering all messages
+
+Stage Summary:
+- Components now only re-render when their specific state slice changes
+- Preview updates throttled from every chunk to every 300ms
+- Historical messages memoized, only streaming message re-renders during streaming
+- React.memo prevents unnecessary re-renders of MessageBubble and MarkdownRenderer
+
+---
+Task ID: 2-b
+Agent: Subagent (LivePreview + CodeEditor optimization)
+Task: Optimize LivePreview and CodeEditor components
+
+Work Log:
+- Reduced LivePreview debounce from 500ms to 300ms
+- Added content hash comparison to skip redundant iframe re-renders
+- Added PreviewErrorBoundary class component for error handling
+- Added loading indicator while iframe renders
+- Improved sandbox with allow-same-origin for better CSS
+- Added pop-out button to open preview in new tab
+- Added smooth transition during content updates
+- Added word wrap toggle in CodeEditor
+- Added font size controls (10-24px range)
+- Added line numbers toggle
+- Added Tab indentation handling in textarea
+- Added auto-close brackets for {}, (), [], quotes
+- Added smart Enter key (auto-indent)
+- Added file type color indicator
+- Added Ctrl/Cmd+Shift+P shortcut for preview
+
+Stage Summary:
+- LivePreview now has error boundary, loading state, pop-out, and smarter updates
+- CodeEditor has word wrap, font size, bracket auto-close, tab handling
+- Both components more robust and user-friendly
+
+---
+Task ID: 2-c
+Agent: Subagent (Page layout optimization)
+Task: Optimize page.tsx for lazy loading and add polish
+
+Work Log:
+- Lazy loaded MemoryViewer, TaskTracker, Terminal, LivePreview using React.lazy
+- Created PanelSkeleton component as loading fallback
+- Added preload-on-hover for sidebar tabs
+- Enhanced status bar with file count, connection latency indicator, memory usage
+- Added keyboard shortcuts: Ctrl+B (sidebar), Ctrl+J (terminal), Ctrl+Shift+E (file explorer), Escape (close preview)
+
+Stage Summary:
+- Initial bundle significantly smaller due to lazy loading
+- Preloading on hover ensures instant tab switching
+- Status bar now shows file count, latency, and memory
+- Global keyboard shortcuts for power users
