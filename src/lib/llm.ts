@@ -165,6 +165,32 @@ async function* streamOpenAICompatible(
       errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
     } catch {}
     console.error(`[LLM] ${config.name} API error: ${response.status} - ${errorMessage}`);
+
+    // Check if this is a model availability error or rate limit
+    const isModelUnavailable = errorMessage.toLowerCase().includes('no endpoints') ||
+      errorMessage.toLowerCase().includes('not available') ||
+      errorMessage.toLowerCase().includes('model not found') ||
+      response.status === 404;
+
+    const isRateLimited = response.status === 429 ||
+      errorMessage.toLowerCase().includes('rate limit') ||
+      errorMessage.toLowerCase().includes('too many requests');
+
+    // Auto-retry with openrouter/auto for OpenRouter errors
+    if (model !== 'openrouter/auto' && config.extraHeaders && (isModelUnavailable || isRateLimited)) {
+      const reason = isRateLimited ? 'rate limited' : 'currently unavailable';
+      console.log(`[LLM] Model "${model}" ${reason}. Auto-retrying with openrouter/auto...`);
+      yield { content: `⚠️ Model "${model}" is ${reason}. Auto-switching to openrouter/auto...\n\n`, done: false };
+      yield* streamOpenAICompatible(config, apiKey, 'openrouter/auto', messages, temperature, maxTokens);
+      return;
+    }
+
+    // For rate limits on non-OpenRouter, show a friendly message
+    if (isRateLimited) {
+      yield { content: '', error: 'Rate limit reached. Please wait a moment and try again.', done: true };
+      return;
+    }
+
     yield { content: '', error: errorMessage, done: true };
     return;
   }
@@ -473,9 +499,24 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
       yield* streamOpenAICompatible(config, apiKey, actualModel, messages, temperature, maxTokens);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error occurred';
-    console.error(`[LLM] Fatal error calling ${config.name}:`, message);
-    yield { content: '', error: `Failed to connect to ${config.name}: ${message}`, done: true };
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error(`[LLM] Fatal error calling ${config.name}:`, errorMsg);
+
+    // Auto-retry with openrouter/auto if the model failed and we're on OpenRouter
+    if (provider === 'openrouter' && actualModel !== 'openrouter/auto') {
+      console.log(`[LLM] Auto-retrying with openrouter/auto...`);
+      yield { content: `⚠️ Model "${actualModel}" failed. Auto-switching to openrouter/auto...\n\n`, done: false };
+      try {
+        yield* streamOpenAICompatible(config, apiKey, 'openrouter/auto', messages, temperature, maxTokens);
+        return;
+      } catch (retryError) {
+        const retryMsg = retryError instanceof Error ? retryError.message : 'Unknown error';
+        yield { content: '', error: `Retry also failed: ${retryMsg}`, done: true };
+        return;
+      }
+    }
+
+    yield { content: '', error: `Failed to connect to ${config.name}: ${errorMsg}`, done: true };
   }
 }
 

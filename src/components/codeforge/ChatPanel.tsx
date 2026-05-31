@@ -719,32 +719,26 @@ function MessageInput({
     }
   };
 
-  const currentAgent = AGENT_CONFIG[selectedAgent];
-
   return (
     <div className="border-t border-zinc-800 bg-zinc-900/80 p-3 backdrop-blur-sm">
-      {/* Agent selector row */}
-      <div className="mb-2 flex items-center gap-2">
-        <Select value={selectedAgent} onValueChange={(v) => setSelectedAgent(v as AgentType)}>
-          <SelectTrigger className="h-7 w-fit gap-1.5 border-zinc-700 bg-zinc-800/60 text-xs text-zinc-300 hover:bg-zinc-800">
-            <span className={currentAgent.color}>{currentAgent.icon}</span>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="border-zinc-700 bg-zinc-800">
-            {(Object.entries(AGENT_CONFIG) as [AgentType, (typeof AGENT_CONFIG)[AgentType]][]).map(
-              ([key, cfg]) => (
-                <SelectItem
-                  key={key}
-                  value={key}
-                  className="gap-2 text-zinc-300 focus:bg-zinc-700 focus:text-zinc-100"
-                >
-                  <span className={cfg.color}>{cfg.icon}</span>
-                  {cfg.label}
-                </SelectItem>
-              ),
-            )}
-          </SelectContent>
-        </Select>
+      {/* Agent selector row — horizontal scrollable pills */}
+      <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {(Object.entries(AGENT_CONFIG) as [AgentType, (typeof AGENT_CONFIG)[AgentType]][]).map(
+          ([key, cfg]) => (
+            <button
+              key={key}
+              onClick={() => setSelectedAgent(key)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                selectedAgent === key
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                  : 'border-zinc-700/60 bg-zinc-800/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+              }`}
+            >
+              <span className={selectedAgent === key ? cfg.color : 'text-zinc-500'}>{cfg.icon}</span>
+              {cfg.label}
+            </button>
+          ),
+        )}
       </div>
 
       {/* Input row */}
