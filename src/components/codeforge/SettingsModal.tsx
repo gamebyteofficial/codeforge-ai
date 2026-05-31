@@ -421,7 +421,7 @@ export default function SettingsModal() {
                       <span className="text-xs text-zinc-500">
                         Active: {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider}
                         {currentProvider === 'openrouter' && ' (Supports all models)'}
-                        {currentProvider === 'opencode' && ' (All models FREE!)'}
+                        {currentProvider === 'opencode' && ' (6 free models + premium)'}
                       </span>
                     </div>
                   </div>

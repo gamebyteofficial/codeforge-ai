@@ -156,14 +156,14 @@ const PROVIDER_GUIDES: Record<ProviderKey, ProviderGuide> = {
     getUrlLabel: 'opencode.ai/zen',
     steps: [
       'Go to opencode.ai/zen and create an account',
-      'All models are completely FREE — no payment needed!',
+      '6 free models available including Big Pickle & DeepSeek V4 Flash!',
       'Navigate to your API Keys',
       'Copy the key and paste it here',
     ],
-    pricing: 'All models are 100% FREE — no credit card required!',
-    freeCredits: 'Every model is free! Including Claude, GPT-4.1, Qwen3, DeepSeek R1 & more',
-    bestModels: ['Big Pickle (355B params, great for coding)', 'Claude Sonnet 4 (Most capable)', 'GPT-4.1 (Latest OpenAI)', 'Qwen3 235B (Large context)', 'DeepSeek R1 (Reasoning)'],
-    tip: 'All 13 models on OpenCode Zen are completely free — including premium ones like Claude Sonnet 4 and GPT-4.1!',
+    pricing: '6 models FREE (no credit card needed). Paid models: Claude Sonnet 4, GPT-5, Gemini 2.5 Pro & more',
+    freeCredits: 'Big Pickle, MiniMax M2.1, GLM 4.7, Kimi K2.5, DeepSeek V4 Flash & Nemotron 3 Super are FREE!',
+    bestModels: ['Big Pickle (FREE — 355B params, great for coding)', 'DeepSeek V4 Flash Free (FREE)', 'Claude Sonnet 4 (Paid — Most capable)', 'GPT-5 (Paid — Latest OpenAI)', 'Gemini 2.5 Pro (Paid)'],
+    tip: 'Big Pickle & DeepSeek V4 Flash are powerful free models — perfect for coding! Nemotron 3 Super Free availability may change.',
   },
 };
 
@@ -292,7 +292,7 @@ interface QuickProviderCardsProps {
 export function QuickProviderCards({ onSelect, selected }: QuickProviderCardsProps) {
   const recommendedProviders: { key: ProviderKey; reason: string }[] = [
     { key: 'openrouter', reason: 'Access ALL models with one key' },
-    { key: 'opencode', reason: 'All 13 models FREE (Claude, GPT-4.1!)' },
+    { key: 'opencode', reason: '6 free models + premium (Claude, GPT-5)' },
     { key: 'deepseek', reason: 'Cheapest paid option' },
     { key: 'gemini', reason: 'Generous free tier' },
   ];
@@ -327,7 +327,7 @@ export function QuickProviderCards({ onSelect, selected }: QuickProviderCardsPro
                   )}
                   {key === 'opencode' && (
                     <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
-                      ALL FREE
+                      6 FREE
                     </span>
                   )}
                   {key === 'deepseek' && (

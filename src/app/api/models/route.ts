@@ -36,19 +36,21 @@ const STATIC_MODELS: Record<string, { id: string; name: string }[]> = {
     { id: 'codestral-latest', name: 'Codestral' },
   ],
   opencode: [
+    // Free models
     { id: 'opencode/big-pickle', name: 'Big Pickle', isFree: true },
-    { id: 'opencode/mimo-v2-pro-free', name: 'MiMo V2 Pro', isFree: true },
-    { id: 'opencode/claude-haiku-4-5', name: 'Claude Haiku 4.5', isFree: true },
-    { id: 'opencode/claude-sonnet-4', name: 'Claude Sonnet 4', isFree: true },
-    { id: 'opencode/glm-5', name: 'GLM-5', isFree: true },
-    { id: 'opencode/glm-5.1', name: 'GLM-5.1', isFree: true },
-    { id: 'opencode/gpt-4.1', name: 'GPT-4.1', isFree: true },
-    { id: 'opencode/gpt-4.1-mini', name: 'GPT-4.1 Mini', isFree: true },
-    { id: 'opencode/kimi-k2.5', name: 'Kimi K2.5', isFree: true },
-    { id: 'opencode/minimax-m1', name: 'MiniMax M1', isFree: true },
-    { id: 'opencode/qwen3-235b-a22b', name: 'Qwen3 235B', isFree: true },
-    { id: 'opencode/qwen3-coder', name: 'Qwen3 Coder', isFree: true },
-    { id: 'opencode/deepseek-r1', name: 'DeepSeek R1', isFree: true },
+    { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1 Free', isFree: true },
+    { id: 'opencode/glm-4.7-free', name: 'GLM 4.7 Free', isFree: true },
+    { id: 'opencode/kimi-k2.5-free', name: 'Kimi K2.5 Free', isFree: true },
+    { id: 'opencode/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', isFree: true },
+    { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', isFree: true },
+    // Paid models
+    { id: 'opencode/kimi-k2.6', name: 'Kimi K2.6', isFree: false },
+    { id: 'opencode/qwen3.6-plus', name: 'Qwen3.6 Plus', isFree: false },
+    { id: 'opencode/claude-sonnet-4', name: 'Claude Sonnet 4', isFree: false },
+    { id: 'opencode/claude-opus-4', name: 'Claude Opus 4', isFree: false },
+    { id: 'opencode/gpt-5', name: 'GPT-5', isFree: false },
+    { id: 'opencode/gpt-5-mini', name: 'GPT-5 Mini', isFree: false },
+    { id: 'opencode/gemini-2.5-pro', name: 'Gemini 2.5 Pro', isFree: false },
   ],
 };
 

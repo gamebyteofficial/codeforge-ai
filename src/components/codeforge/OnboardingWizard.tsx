@@ -583,7 +583,7 @@ function Step2ApiKey({
           <span className="text-xs text-zinc-500">
             Active: {PROVIDERS[provider].name}
             {provider === 'openrouter' && ' (Recommended — supports all models)'}
-            {provider === 'opencode' && ' (All models FREE!)'}
+            {provider === 'opencode' && ' (6 free models + premium)'}
           </span>
         </div>
       </div>
