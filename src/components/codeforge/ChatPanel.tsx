@@ -28,8 +28,13 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  FilePlus2,
+  FolderCheck,
+  FileCheck2,
 } from 'lucide-react';
-import { useAppStore, type AgentType } from '@/store';
+import { useAppStore, type AgentType, type ProjectFile } from '@/store';
+import { parseFilesFromResponse, type ParsedFile } from '@/lib/file-parser';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -597,16 +602,184 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
 // MessageBubble
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// FileCreateBar – Shows below AI messages that contain file blocks
+// ---------------------------------------------------------------------------
+
+function FileCreateBar({
+  content,
+  onFilesCreated,
+}: {
+  content: string;
+  onFilesCreated: (files: ProjectFile[]) => void;
+}) {
+  const [isCreating, setIsCreating] = useState(false);
+  const [isCreated, setIsCreated] = useState(false);
+  const [createdCount, setCreatedCount] = useState(0);
+  const parsedFiles = parseFilesFromResponse(content);
+  const { currentProject, addFile, setCurrentFile, updateFile } = useAppStore();
+
+  if (parsedFiles.length === 0) return null;
+
+  const handleCreateFiles = async () => {
+    setIsCreating(true);
+    try {
+      const res = await fetch('/api/files/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files: parsedFiles.map((f) => ({
+            name: f.fileName,
+            path: f.filePath,
+            content: f.content,
+            language: f.language,
+            isFolder: false,
+            projectId: currentProject?.id || undefined,
+          })),
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to create files');
+
+      const data = await res.json();
+      const createdFiles: ProjectFile[] = (data.files || []).map((f: Record<string, unknown>) => ({
+        id: f.id as string,
+        name: f.name as string,
+        path: f.path as string,
+        content: f.content as string,
+        language: f.language as string | undefined,
+        isFolder: (f.isFolder as boolean) || false,
+        projectId: (f.projectId as string) || null,
+        createdAt: f.createdAt as string,
+        updatedAt: f.updatedAt as string,
+      }));
+
+      // Update the store with all created files
+      for (const file of createdFiles) {
+        // Check if file already exists in store
+        const existing = useAppStore.getState().files.find((f) => f.id === file.id);
+        if (existing) {
+          updateFile(file.id, file);
+        } else {
+          addFile(file);
+        }
+      }
+
+      // Open the first file in the editor
+      if (createdFiles.length > 0) {
+        setCurrentFile(createdFiles[0]);
+      }
+
+      // Update preview files if HTML/CSS/JS were created
+      const htmlFile = createdFiles.find((f) => {
+        const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+        return ['html', 'htm'].includes(ext);
+      });
+      const cssFile = createdFiles.find((f) => {
+        const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+        return ['css', 'scss', 'less'].includes(ext);
+      });
+      const jsFile = createdFiles.find((f) => {
+        const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+        return ['js', 'jsx', 'ts', 'tsx'].includes(ext);
+      });
+
+      if (htmlFile || cssFile || jsFile) {
+        const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+        setPreviewFiles({
+          html: htmlFile?.content ?? '',
+          css: cssFile?.content ?? '',
+          js: jsFile?.content ?? '',
+        });
+        setIsPreviewOpen(true);
+      }
+
+      setCreatedCount(data.created + data.updated);
+      setIsCreated(true);
+      onFilesCreated(createdFiles);
+    } catch (error) {
+      console.error('Failed to create files:', error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {isCreated ? (
+            <>
+              <FileCheck2 className="size-4 shrink-0 text-emerald-400" />
+              <span className="text-xs text-emerald-400 font-medium">
+                {createdCount} file{createdCount !== 1 ? 's' : ''} created successfully!
+              </span>
+            </>
+          ) : (
+            <>
+              <FilePlus2 className="size-4 shrink-0 text-amber-400" />
+              <span className="text-xs text-zinc-300">
+                {parsedFiles.length} file{parsedFiles.length !== 1 ? 's' : ''} detected
+              </span>
+              <div className="flex gap-1 overflow-hidden">
+                {parsedFiles.slice(0, 4).map((f) => (
+                  <span
+                    key={f.filePath}
+                    className="shrink-0 rounded bg-zinc-700/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400"
+                  >
+                    {f.fileName}
+                  </span>
+                ))}
+                {parsedFiles.length > 4 && (
+                  <span className="text-[10px] text-zinc-500">
+                    +{parsedFiles.length - 4} more
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        {!isCreated && (
+          <Button
+            size="sm"
+            onClick={handleCreateFiles}
+            disabled={isCreating}
+            className="h-7 gap-1.5 rounded-md bg-emerald-600 px-3 text-xs text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {isCreating ? (
+              <>
+                <Loader2 className="size-3 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <FolderCheck className="size-3" />
+                Create Files
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MessageBubble
+// ---------------------------------------------------------------------------
+
 function MessageBubble({
   role,
   content,
   model,
   onApplyCode,
+  onFilesCreated,
 }: {
   role: 'user' | 'assistant' | 'system';
   content: string;
   model?: string;
   onApplyCode?: (code: string) => void;
+  onFilesCreated?: (files: ProjectFile[]) => void;
 }) {
   const isUser = role === 'user';
 
@@ -664,6 +837,10 @@ function MessageBubble({
             <p className="whitespace-pre-wrap">{content}</p>
           ) : (
             <MarkdownRenderer content={content} onApplyCode={onApplyCode} />
+          )}
+          {/* File auto-creation bar for AI messages */}
+          {!isUser && onFilesCreated && (
+            <FileCreateBar content={content} onFilesCreated={onFilesCreated} />
           )}
         </div>
       </div>
@@ -849,6 +1026,15 @@ export default function ChatPanel() {
     [currentFile, setCurrentFile],
   );
 
+  const handleFilesCreated = useCallback(
+    (files: ProjectFile[]) => {
+      // Files are already added to the store by FileCreateBar
+      // This callback can be used for additional side effects
+      console.log(`[ChatPanel] ${files.length} files created from AI response`);
+    },
+    [],
+  );
+
   const handleSend = useCallback(
     async (message: string) => {
       // Create user message
@@ -1012,11 +1198,25 @@ export default function ChatPanel() {
           console.error('Chat API error:', error);
         }
       } finally {
+        // Capture final content before clearing
+        const finalContentForDetection = streamingContentRef.current;
+
         setIsChatLoading(false);
         setStreamingContent('');
         setStreamingModel('');
         streamingContentRef.current = '';
         abortControllerRef.current = null;
+
+        // Show toast if files were detected in the response
+        if (finalContentForDetection) {
+          const detectedFiles = parseFilesFromResponse(finalContentForDetection);
+          if (detectedFiles.length > 0) {
+            toast.info(`${detectedFiles.length} file${detectedFiles.length > 1 ? 's' : ''} detected in AI response`, {
+              description: detectedFiles.map((f) => f.fileName).join(', '),
+              duration: 5000,
+            });
+          }
+        }
       }
     },
     [
@@ -1065,6 +1265,7 @@ export default function ChatPanel() {
                     content={msg.content}
                     model={msg.model}
                     onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
+                    onFilesCreated={msg.role === 'assistant' ? handleFilesCreated : undefined}
                   />
                 ))}
               </AnimatePresence>
