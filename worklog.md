@@ -1,43 +1,4 @@
 ---
-Task ID: 1
-Agent: Main Agent
-Task: Fix OpenRouter "user not found" and "No endpoints found" errors on API connection
-
-Work Log:
-- Read all key files: llm.ts, OnboardingWizard.tsx, SettingsModal.tsx, ChatPanel.tsx, store/index.ts, API routes
-- Identified root cause: OpenRouter model IDs were fabricated/incorrect
-- Fixed llm.ts: Updated OpenRouter models to verified IDs
-- Fixed llm.ts: Changed connection test for OpenRouter to use GET /api/v1/models endpoint
-- Fixed OnboardingWizard.tsx, SettingsModal.tsx, ChatPanel.tsx model lists
-- Cleared old settings from SQLite database
-- Verified no lint errors and dev server running cleanly
-
-Stage Summary:
-- OpenRouter connection test now uses the /api/v1/models endpoint
-- All model IDs updated to verified OpenRouter models
-- Old database settings cleared
-
----
-Task ID: 2
-Agent: Main Agent
-Task: Fix critical bug: selected model not being used by the agent (provider routing ignored)
-
-Work Log:
-- Traced the full flow: UI selection → API call → LLM request → provider endpoint
-- Found BUG 1: streamLLM() used MODEL_ALIASES to determine provider, ignoring settings.provider entirely
-- Found BUG 2: Chat API route hardcoded 'gpt-4o' as fallback model
-- Found BUG 3: ChatPanel showed ALL models from ALL providers
-- Rewrote streamLLM() to ALWAYS use the configured provider from settings
-- Added 'openrouter/auto' as a reliable model option
-- Fixed ChatPanel ModelSelector to filter models based on configured provider
-- Fixed chat API route fallback from 'gpt-4o' to 'openrouter/auto'
-
-Stage Summary:
-- CRITICAL FIX: streamLLM() now ALWAYS routes through the configured provider
-- Model selector now only shows models available for the configured provider
-- Added 'openrouter/auto' as the recommended default model
-
----
 Task ID: 3
 Agent: full-stack-developer + Main Agent
 Task: Fix "No endpoints found" error for all free OpenRouter models + dynamic model fetching
@@ -58,3 +19,34 @@ Stage Summary:
 - ADDED: Dynamic model fetching from OpenRouter API
 - ADDED: Connection status indicator, model info in messages
 - CHANGED: Default to OpenRouter + openrouter/auto
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Add scroll up/down buttons and visible scrollbar to chat panel + improve model API error handling
+
+Work Log:
+- Replaced ScrollArea component with custom scrollable div (chat-scroll-area class)
+- Added scrollContainerRef for direct scroll position tracking
+- Added handleScroll callback to detect when user scrolls away from top/bottom
+- Added floating scroll-to-top button (ArrowUp icon, appears when scrolled >300px)
+- Added floating scroll-to-bottom button (ArrowDown icon, appears when >100px from bottom)
+- Both buttons use AnimatePresence for smooth fade in/out with framer-motion
+- Added custom CSS scrollbar styling in globals.css for .chat-scroll-area class
+  - 8px wide scrollbar with dark zinc colors (#3f3f46)
+  - Hover/active states for better visibility
+  - Custom up/down arrow SVG buttons in scrollbar
+  - Firefox scrollbar-width: thin support
+- Improved smart auto-scroll: only auto-scrolls when user is near bottom (within 200px)
+- Improved error handling in ChatPanel: model-specific errors show helpful message
+  - Detects "no endpoints", "not available", "model not found", 404 errors
+  - Suggests switching to openrouter/auto with instructions
+  - General errors show the actual error message
+- Cleaned up unused imports (Select components, AlertTriangle, ChevronUp, ScrollArea)
+
+Stage Summary:
+- ADDED: Floating scroll-to-top and scroll-to-bottom buttons with animation
+- ADDED: Custom visible scrollbar for chat area (dark theme styled)
+- ADDED: Smart auto-scroll (only when near bottom)
+- IMPROVED: Model error messages with actionable suggestions
+- CLEANED: Removed unused imports

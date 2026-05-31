@@ -23,20 +23,14 @@ import {
   Sparkles,
   Hash,
   ChevronDown,
+  ArrowDown,
+  ArrowUp,
   Wifi,
   WifiOff,
   RefreshCw,
 } from 'lucide-react';
 import { useAppStore, type AgentType } from '@/store';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Tooltip,
   TooltipContent,
@@ -804,15 +798,46 @@ export default function ChatPanel() {
   } = useAppStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef<string>('');
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [streamingModel, setStreamingModel] = useState<string>('');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
-  // Auto-scroll to bottom on new messages
+  // Check scroll position to show/hide scroll buttons
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // Show scroll-to-top when scrolled down more than 300px
+    setShowScrollTop(scrollTop > 300);
+    // Show scroll-to-bottom when not at the bottom
+    setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 100);
+  }, []);
+
+  // Scroll to top
+  const scrollToTop = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current?.scrollHeight || 0, behavior: 'smooth' });
+  }, []);
+
+  // Auto-scroll to bottom on new messages (only if already near bottom)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // Only auto-scroll if user is near the bottom (within 200px)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 200;
+    if (isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [currentConversation?.messages.length, streamingContent, isChatLoading]);
 
   const handleApplyCode = useCallback(
@@ -969,11 +994,18 @@ export default function ChatPanel() {
             addMessageToConversation(assistantMessage);
           }
         } else {
+          const errStr = (error as Error)?.message || String(error);
+          const isModelError = errStr.toLowerCase().includes('no endpoints') ||
+            errStr.toLowerCase().includes('not available') ||
+            errStr.toLowerCase().includes('model not found') ||
+            errStr.includes('404');
+
           const errorMessage = {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
-            content:
-              'Sorry, I encountered an error processing your request. Please check your API key and try again.',
+            content: isModelError
+              ? `⚠️ **Model unavailable**: The model "${selectedModel}" currently has no available endpoints.\n\n**Suggestions:**\n- Try switching to **openrouter/auto** (auto-routes to the best available model)\n- Select a different model from the model selector\n- Free models can be temporarily unavailable — try again later\n\nClick the model selector in the top-right to change models.`
+              : `Sorry, I encountered an error processing your request. Please check your API key and try again.\n\n**Error:** ${errStr}`,
             createdAt: new Date().toISOString(),
           };
           addMessageToConversation(errorMessage);
@@ -1017,81 +1049,120 @@ export default function ChatPanel() {
       {isEmpty ? (
         <EmptyState onPromptClick={handlePromptClick} />
       ) : (
-        <ScrollArea className="flex-1">
-          <div ref={scrollRef} className="py-2">
-            <AnimatePresence initial={false}>
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  model={msg.model}
-                  onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
-                />
-              ))}
-            </AnimatePresence>
+        <div className="relative flex-1 min-h-0">
+          {/* Custom scrollable container */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="h-full overflow-y-auto chat-scroll-area"
+          >
+            <div ref={scrollRef} className="py-2">
+              <AnimatePresence initial={false}>
+                {messages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    role={msg.role}
+                    content={msg.content}
+                    model={msg.model}
+                    onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
+                  />
+                ))}
+              </AnimatePresence>
 
-            {/* Streaming content - show in real-time */}
-            <AnimatePresence>
-              {isChatLoading && streamingContent && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex gap-3 px-4 py-3"
-                >
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                    <Bot className="size-4" />
-                  </div>
-                  <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
-                    <span className="text-[11px] font-medium text-emerald-400/80">
-                      CodeForge AI
-                      {streamingModel && (
-                        <span className="ml-1.5 text-zinc-600 font-normal">
-                          via {streamingModel}
-                        </span>
-                      )}
-                    </span>
-                    <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300">
-                      <MarkdownRenderer content={streamingContent} onApplyCode={handleApplyCode} />
-                      <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
+              {/* Streaming content - show in real-time */}
+              <AnimatePresence>
+                {isChatLoading && streamingContent && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex gap-3 px-4 py-3"
+                  >
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                      <Bot className="size-4" />
                     </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Loading indicator (before streaming starts) */}
-            <AnimatePresence>
-              {isChatLoading && !streamingContent && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex gap-3 px-4 py-3"
-                >
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                    <Bot className="size-4" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[11px] font-medium text-emerald-400/80">
-                      CodeForge AI
-                    </span>
-                    <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-3 text-sm text-zinc-400">
-                      <Loader2 className="size-3.5 animate-spin text-emerald-500" />
-                      <span>Calling {selectedModel}...</span>
-                      <LoadingDots />
+                    <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
+                      <span className="text-[11px] font-medium text-emerald-400/80">
+                        CodeForge AI
+                        {streamingModel && (
+                          <span className="ml-1.5 text-zinc-600 font-normal">
+                            via {streamingModel}
+                          </span>
+                        )}
+                      </span>
+                      <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300">
+                        <MarkdownRenderer content={streamingContent} onApplyCode={handleApplyCode} />
+                        <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            <div ref={messagesEndRef} />
+              {/* Loading indicator (before streaming starts) */}
+              <AnimatePresence>
+                {isChatLoading && !streamingContent && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex gap-3 px-4 py-3"
+                  >
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                      <Bot className="size-4" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-emerald-400/80">
+                        CodeForge AI
+                      </span>
+                      <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-3 text-sm text-zinc-400">
+                        <Loader2 className="size-3.5 animate-spin text-emerald-500" />
+                        <span>Calling {selectedModel}...</span>
+                        <LoadingDots />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div ref={messagesEndRef} />
+            </div>
           </div>
-        </ScrollArea>
+
+          {/* Floating scroll buttons */}
+          <AnimatePresence>
+            {showScrollTop && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                onClick={scrollToTop}
+                className="absolute top-3 right-3 z-10 flex size-8 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800/90 text-zinc-400 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700 hover:text-zinc-100"
+                title="Scroll to top"
+              >
+                <ArrowUp className="size-4" />
+              </motion.button>
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {showScrollBottom && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                onClick={scrollToBottom}
+                className="absolute bottom-3 right-3 z-10 flex size-8 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800/90 text-zinc-400 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-700 hover:text-zinc-100"
+                title="Scroll to bottom"
+              >
+                <ArrowDown className="size-4" />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
       )}
 
       {/* Input area */}

@@ -120,3 +120,47 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Chat scroll area - visible scrollbar for dark theme */
+.chat-scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+.chat-scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll-area::-webkit-scrollbar-thumb {
+  background-color: #3f3f46;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.chat-scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: #52525b;
+}
+
+.chat-scroll-area::-webkit-scrollbar-thumb:active {
+  background-color: #71717a;
+}
+
+/* Scrollbar buttons (up/down arrows) */
+.chat-scroll-area::-webkit-scrollbar-button:single-button {
+  display: block;
+  height: 16px;
+  width: 100%;
+}
+
+.chat-scroll-area::-webkit-scrollbar-button:single-button:vertical-decrement {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E") center center no-repeat;
+}
+
+.chat-scroll-area::-webkit-scrollbar-button:single-button:vertical-increment {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center center no-repeat;
+}
