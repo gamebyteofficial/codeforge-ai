@@ -48,6 +48,53 @@ import {
 } from '@/components/ui/popover';
 
 // ---------------------------------------------------------------------------
+// Utility: Extract preview content from streaming text
+// ---------------------------------------------------------------------------
+
+function extractPreviewContent(text: string): { html: string; css: string; js: string } | null {
+  // Match both complete (```...```) and incomplete (```... without closing) code blocks
+  // Also handle the 📄 **filepath** pattern that the system prompt instructs the AI to use
+
+  let html = '';
+  let css = '';
+  let js = '';
+
+  // Pattern 1: 📄 **filepath** followed by code block (handles both complete and incomplete blocks)
+  const emojiFilePattern = /📄\s*\*\*(.+?)\*\*\s*\n```(\w*)\n([\s\S]*?)(?:```|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = emojiFilePattern.exec(text)) !== null) {
+    const filePath = match[1].trim().toLowerCase();
+    const lang = match[2].toLowerCase();
+    const content = match[3];
+    if (filePath.endsWith('.html') || filePath.endsWith('.htm') || lang === 'html' || lang === 'markup') {
+      html = content;
+    } else if (filePath.endsWith('.css') || filePath.endsWith('.scss') || filePath.endsWith('.less') || lang === 'css' || lang === 'scss' || lang === 'less') {
+      css = content;
+    } else if (filePath.endsWith('.js') || filePath.endsWith('.jsx') || filePath.endsWith('.ts') || filePath.endsWith('.tsx') || lang === 'javascript' || lang === 'js' || lang === 'typescript' || lang === 'ts') {
+      js = content;
+    }
+  }
+
+  // Pattern 2: Plain code blocks (without 📄 prefix) — fallback
+  if (!html) {
+    const htmlMatch = text.match(/```(?:html|markup)\n([\s\S]*?)(?:```|$)/);
+    html = htmlMatch?.[1] || '';
+  }
+  if (!css) {
+    const cssMatch = text.match(/```(?:css|scss|less)\n([\s\S]*?)(?:```|$)/);
+    css = cssMatch?.[1] || '';
+  }
+  if (!js) {
+    const jsMatch = text.match(/```(?:javascript|js|typescript|ts)\n([\s\S]*?)(?:```|$)/);
+    js = jsMatch?.[1] || '';
+  }
+
+  if (!html && !css && !js) return null;
+
+  return { html, css, js };
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -1168,6 +1215,14 @@ export default function ChatPanel() {
                     fullContent += parsed.content;
                     setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
+
+                    // Update preview in real-time during streaming
+                    const previewContent = extractPreviewContent(fullContent);
+                    if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+                      const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+                      setPreviewFiles(previewContent);
+                      setIsPreviewOpen(true);
+                    }
                   }
                   if (parsed.model) {
                     lastModel = parsed.model;
@@ -1193,15 +1248,24 @@ export default function ChatPanel() {
         } else {
           // Handle JSON response (non-streaming fallback)
           const data = await res.json();
+          const responseContent = data.message ?? data.content ?? 'No response received.';
           const assistantMessage = {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
-            content: data.message ?? data.content ?? 'No response received.',
+            content: responseContent,
             tokens: data.tokens,
             model: data.model || selectedModel,
             createdAt: new Date().toISOString(),
           };
           addMessageToConversation(assistantMessage);
+
+          // Also extract preview from non-streaming response
+          const previewContent = extractPreviewContent(responseContent);
+          if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+            const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+            setPreviewFiles(previewContent);
+            setIsPreviewOpen(true);
+          }
         }
       } catch (error) {
         if ((error as Error).name === 'AbortError') {

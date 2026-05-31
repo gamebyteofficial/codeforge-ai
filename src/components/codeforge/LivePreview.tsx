@@ -15,7 +15,10 @@ import {
   RefreshCw,
   X,
   Globe,
+  Sparkles,
+  Code2,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 type DeviceSize = 'desktop' | 'tablet' | 'mobile';
 
@@ -174,11 +177,15 @@ export default function LivePreview() {
       <div className="flex-1 min-h-0 overflow-auto bg-zinc-900/30">
         {isEmpty ? (
           <div className="flex h-full items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-zinc-600">
-              {/* Checkered/grid background hint */}
-              <div className="relative">
+            <div className="flex flex-col items-center gap-4 text-zinc-600">
+              {/* Animated monitor icon */}
+              <motion.div
+                className="relative"
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+              >
                 <div
-                  className="size-16 rounded-lg opacity-20"
+                  className="size-20 rounded-xl opacity-15"
                   style={{
                     backgroundImage:
                       'linear-gradient(45deg, #3f3f46 25%, transparent 25%), linear-gradient(-45deg, #3f3f46 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3f3f46 75%), linear-gradient(-45deg, transparent 75%, #3f3f46 75%)',
@@ -186,12 +193,34 @@ export default function LivePreview() {
                     backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
                   }}
                 />
-                <Monitor className="absolute inset-0 m-auto size-8 text-zinc-600" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="flex size-12 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                    <Monitor className="size-6 text-emerald-400/60" />
+                  </div>
+                </div>
+              </motion.div>
+
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-sm font-medium text-zinc-400">Ask AI to build something</p>
+                <div className="flex items-center gap-1.5 text-xs text-zinc-600">
+                  <Sparkles className="size-3 text-emerald-500/50" />
+                  <span>Try:</span>
+                </div>
+                <div className="flex flex-col items-center gap-1 mt-1">
+                  <span className="text-[11px] text-zinc-500 font-mono">&quot;Build me a landing page&quot;</span>
+                  <span className="text-[11px] text-zinc-500 font-mono">&quot;Create a todo app&quot;</span>
+                  <span className="text-[11px] text-zinc-500 font-mono">&quot;Make a calculator&quot;</span>
+                </div>
               </div>
-              <p className="text-sm font-medium text-zinc-500">No preview available</p>
-              <p className="text-xs text-zinc-600">
-                Write HTML, CSS, or JS to see a live preview
-              </p>
+
+              <motion.div
+                className="flex items-center gap-1.5 mt-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1"
+                animate={{ borderColor: ['rgba(16,185,129,0.1)', 'rgba(16,185,129,0.3)', 'rgba(16,185,129,0.1)'] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Code2 className="size-3 text-emerald-500/50" />
+                <span className="text-[10px] text-zinc-500">Preview updates as you code</span>
+              </motion.div>
             </div>
           </div>
         ) : (
