@@ -88,12 +88,11 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
   openrouter: {
     name: 'OpenRouter',
     models: [
-      'deepseek/deepseek-v4-flash:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'qwen/qwen3-coder:free',
-      'google/gemma-4-31b-it:free',
-      'moonshotai/kimi-k2.6:free',
-      'openai/gpt-oss-120b:free',
+      'google/gemma-2-9b-it:free',
+      'meta-llama/llama-3.1-8b-instruct:free',
+      'mistralai/mistral-7b-instruct:free',
+      'qwen/qwen-2-7b-instruct:free',
+      'huggingfaceh4/zephyr-7b-beta:free',
       'openai/gpt-4o',
       'openai/gpt-4o-mini',
       'anthropic/claude-3.5-sonnet',

@@ -89,13 +89,12 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: [
-      // Free models (verified from OpenRouter API as of 2025)
-      'deepseek/deepseek-v4-flash:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'qwen/qwen3-coder:free',
-      'google/gemma-4-31b-it:free',
-      'moonshotai/kimi-k2.6:free',
-      'openai/gpt-oss-120b:free',
+      // Free models (verified from OpenRouter API)
+      'google/gemma-2-9b-it:free',
+      'meta-llama/llama-3.1-8b-instruct:free',
+      'mistralai/mistral-7b-instruct:free',
+      'qwen/qwen-2-7b-instruct:free',
+      'huggingfaceh4/zephyr-7b-beta:free',
       // Popular paid models
       'openai/gpt-4o',
       'openai/gpt-4o-mini',
@@ -104,7 +103,7 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
       'meta-llama/llama-3.1-70b-instruct',
       'deepseek/deepseek-chat',
     ],
-    testModel: 'deepseek/deepseek-v4-flash:free', // Use a free model for testing
+    testModel: 'google/gemma-2-9b-it:free', // Use a free model for testing
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {
@@ -143,15 +142,13 @@ const MODEL_ALIASES: Record<string, { provider: ProviderKey; actualModel: string
   'mistral-medium': { provider: 'mistral', actualModel: 'mistral-medium-latest' },
   'codestral': { provider: 'mistral', actualModel: 'codestral-latest' },
   // OpenRouter - Legacy aliases (backward compat)
-  'auto': { provider: 'openrouter', actualModel: 'deepseek/deepseek-v4-flash:free' },
-  'meta-llama/llama-3.1-8b-instruct:free': { provider: 'openrouter', actualModel: 'deepseek/deepseek-v4-flash:free' },
-  // OpenRouter - Free models (verified from API)
-  'deepseek/deepseek-v4-flash:free': { provider: 'openrouter', actualModel: 'deepseek/deepseek-v4-flash:free' },
-  'meta-llama/llama-3.3-70b-instruct:free': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.3-70b-instruct:free' },
-  'qwen/qwen3-coder:free': { provider: 'openrouter', actualModel: 'qwen/qwen3-coder:free' },
-  'google/gemma-4-31b-it:free': { provider: 'openrouter', actualModel: 'google/gemma-4-31b-it:free' },
-  'moonshotai/kimi-k2.6:free': { provider: 'openrouter', actualModel: 'moonshotai/kimi-k2.6:free' },
-  'openai/gpt-oss-120b:free': { provider: 'openrouter', actualModel: 'openai/gpt-oss-120b:free' },
+  'auto': { provider: 'openrouter', actualModel: 'google/gemma-2-9b-it:free' },
+  // OpenRouter - Free models
+  'google/gemma-2-9b-it:free': { provider: 'openrouter', actualModel: 'google/gemma-2-9b-it:free' },
+  'meta-llama/llama-3.1-8b-instruct:free': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-8b-instruct:free' },
+  'mistralai/mistral-7b-instruct:free': { provider: 'openrouter', actualModel: 'mistralai/mistral-7b-instruct:free' },
+  'qwen/qwen-2-7b-instruct:free': { provider: 'openrouter', actualModel: 'qwen/qwen-2-7b-instruct:free' },
+  'huggingfaceh4/zephyr-7b-beta:free': { provider: 'openrouter', actualModel: 'huggingfaceh4/zephyr-7b-beta:free' },
   // OpenRouter - Popular paid models
   'openai/gpt-4o': { provider: 'openrouter', actualModel: 'openai/gpt-4o' },
   'openai/gpt-4o-mini': { provider: 'openrouter', actualModel: 'openai/gpt-4o-mini' },
@@ -587,7 +584,29 @@ export async function testProviderConnection(
       return { success: false, error: `API error ${response.status}: ${errorData.slice(0, 200)}` };
     }
 
-    // OpenAI-compatible providers
+    // OpenRouter: validate API key by listing models (more reliable than chat completion)
+    if (provider === 'openrouter') {
+      const modelsUrl = 'https://openrouter.ai/api/v1/models';
+      const modelsResponse = await fetch(modelsUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...config.extraHeaders,
+        },
+      });
+      if (modelsResponse.ok) {
+        return { success: true };
+      }
+      const errorData = await modelsResponse.text();
+      let errorMsg = `OpenRouter API key validation failed (${modelsResponse.status})`;
+      try {
+        const parsed = JSON.parse(errorData);
+        errorMsg = parsed.error?.message || parsed.error?.code || parsed.message || errorMsg;
+      } catch {}
+      return { success: false, error: errorMsg };
+    }
+
+    // Other OpenAI-compatible providers
     const url = `${config.baseUrl}${config.chatPath}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
