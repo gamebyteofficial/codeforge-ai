@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useDeferredValue, type FormEvent, type KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -636,8 +636,9 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
         transition={{ duration: 0.5 }}
         className="flex flex-col items-center gap-4"
       >
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
-          <Bot className="size-8 text-emerald-500" />
+        <div className="relative flex size-16 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-transparent" />
+          <Bot className="relative size-8 text-emerald-500" />
         </div>
         <div className="text-center">
           <h2 className="text-xl font-semibold text-zinc-100">CodeForge AI</h2>
@@ -658,8 +659,9 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
           <button
             key={prompt.label}
             onClick={() => onPromptClick(prompt.label)}
-            className="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-left text-sm text-zinc-300 transition-all hover:border-emerald-500/30 hover:bg-zinc-800/80 hover:text-zinc-100"
+            className="group relative flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-left text-sm text-zinc-300 transition-all hover:border-emerald-500/30 hover:bg-zinc-800/80 hover:text-zinc-100 overflow-hidden"
           >
+            <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-emerald-500/5 to-transparent" />
             <span className="shrink-0 text-zinc-500 transition-colors group-hover:text-emerald-400">
               {prompt.icon}
             </span>
@@ -882,12 +884,14 @@ const MessageBubble = React.memo(function MessageBubble({
   role,
   content,
   model,
+  responseTime,
   onApplyCode,
   onFilesCreated,
 }: {
   role: 'user' | 'assistant' | 'system';
   content: string;
   model?: string;
+  responseTime?: number;
   onApplyCode?: (code: string) => void;
   onFilesCreated?: (files: ProjectFile[]) => void;
 }) {
@@ -953,6 +957,13 @@ const MessageBubble = React.memo(function MessageBubble({
             <FileCreateBar content={content} onFilesCreated={onFilesCreated} />
           )}
         </div>
+        {/* Response time indicator for AI messages */}
+        {!isUser && responseTime !== undefined && responseTime > 0 && (
+          <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+            <Activity className="size-2.5" />
+            Done · {responseTime.toFixed(1)}s
+          </span>
+        )}
       </div>
     </motion.div>
   );
@@ -966,13 +977,43 @@ const StreamingMessage = React.memo(function StreamingMessage({
   content,
   model,
   onApplyCode,
+  startTime,
 }: {
   content: string;
   model: string;
   onApplyCode?: (code: string) => void;
+  startTime?: number;
 }) {
   // Approximate token count (1 token ≈ 4 chars)
   const tokenCount = useMemo(() => Math.ceil(content.length / 4), [content.length]);
+
+  // Elapsed time counter
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - (startTime ?? Date.now())) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  // Typing speed indicator (WPM)
+  const prevContentLengthRef = useRef(0);
+  const prevTimestampRef = useRef(Date.now());
+  const [wpm, setWpm] = useState(0);
+  useEffect(() => {
+    const now = Date.now();
+    const deltaChars = content.length - prevContentLengthRef.current;
+    const deltaMs = now - prevTimestampRef.current;
+    if (deltaMs > 0 && deltaChars > 0) {
+      // WPM = (chars / 5) / (minutes)
+      const minutes = deltaMs / 60000;
+      const currentWpm = Math.round((deltaChars / 5) / minutes);
+      // Smooth the WPM with a moving average
+      setWpm((prev) => prev === 0 ? currentWpm : Math.round(prev * 0.7 + currentWpm * 0.3));
+    }
+    prevContentLengthRef.current = content.length;
+    prevTimestampRef.current = now;
+  }, [content]);
 
   return (
     <motion.div
@@ -1004,12 +1045,20 @@ const StreamingMessage = React.memo(function StreamingMessage({
               </span>
             )}
           </span>
-          {/* Streaming status badge */}
+          {/* Streaming status badge with elapsed time & WPM */}
           <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
             <Activity className="size-2.5" />
             Streaming
             <span className="text-emerald-400/60">·</span>
+            {elapsed}s
+            <span className="text-emerald-400/60">·</span>
             {tokenCount.toLocaleString()} tokens
+            {wpm > 0 && (
+              <>
+                <span className="text-emerald-400/60">·</span>
+                {wpm} wpm
+              </>
+            )}
           </span>
         </div>
         <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300 relative">
@@ -1233,7 +1282,9 @@ export default function ChatPanel() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef<string>('');
   const [streamingContent, setStreamingContent] = useState<string>('');
+  const deferredStreamingContent = useDeferredValue(streamingContent);
   const [streamingModel, setStreamingModel] = useState<string>('');
+  const [streamStartTime, setStreamStartTime] = useState<number>(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
@@ -1363,6 +1414,7 @@ export default function ChatPanel() {
 
       // Call API with streaming
       setIsChatLoading(true);
+      setStreamStartTime(Date.now());
       streamingContentRef.current = '';
       setStreamingContent('');
       setStreamingModel('');
@@ -1452,12 +1504,14 @@ export default function ChatPanel() {
           flushPreviewUpdate(fullContent);
 
           // Finalize the streaming message
+          const responseTimeSec = ((Date.now() - streamStartTime) / 1000);
           const assistantMessage = {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
             content: fullContent || 'No response received.',
             tokens: Math.ceil(message.length / 4) + Math.ceil(fullContent.length / 4),
             model: lastModel,
+            responseTime: responseTimeSec,
             createdAt: new Date().toISOString(),
           };
           addMessageToConversation(assistantMessage);
@@ -1465,12 +1519,14 @@ export default function ChatPanel() {
           // Handle JSON response (non-streaming fallback)
           const data = await res.json();
           const responseContent = data.message ?? data.content ?? 'No response received.';
+          const responseTimeSec = ((Date.now() - streamStartTime) / 1000);
           const assistantMessage = {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
             content: responseContent,
             tokens: data.tokens,
             model: data.model || selectedModel,
+            responseTime: responseTimeSec,
             createdAt: new Date().toISOString(),
           };
           addMessageToConversation(assistantMessage);
@@ -1487,12 +1543,14 @@ export default function ChatPanel() {
         if ((error as Error).name === 'AbortError') {
           // User cancelled — finalize what we have
           if (streamingContentRef.current) {
+            const responseTimeSec = ((Date.now() - streamStartTime) / 1000);
             const assistantMessage = {
               id: crypto.randomUUID(),
               role: 'assistant' as const,
               content: streamingContentRef.current,
               tokens: Math.ceil(streamingContentRef.current.length / 4),
               model: streamingModel || selectedModel,
+              responseTime: responseTimeSec,
               createdAt: new Date().toISOString(),
             };
             addMessageToConversation(assistantMessage);
@@ -1562,6 +1620,7 @@ export default function ChatPanel() {
           role={msg.role}
           content={msg.content}
           model={msg.model}
+          responseTime={msg.responseTime}
           onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
           onFilesCreated={msg.role === 'assistant' ? handleFilesCreated : undefined}
         />
@@ -1622,11 +1681,12 @@ export default function ChatPanel() {
 
               {/* Streaming content - show in real-time with enhanced UX */}
               <AnimatePresence>
-                {isChatLoading && streamingContent && (
+                {isChatLoading && deferredStreamingContent && (
                   <StreamingMessage
-                    content={streamingContent}
+                    content={deferredStreamingContent}
                     model={streamingModel}
                     onApplyCode={handleApplyCode}
+                    startTime={streamStartTime}
                   />
                 )}
               </AnimatePresence>

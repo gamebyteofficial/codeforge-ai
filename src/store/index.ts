@@ -6,6 +6,7 @@ export interface Message {
   content: string;
   tokens?: number;
   model?: string;
+  responseTime?: number;
   createdAt: string;
 }
 
@@ -224,7 +225,7 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarTab: 'files',
   bottomTab: 'terminal',
   isSidebarOpen: true,
-  isBottomPanelOpen: true,
+  isBottomPanelOpen: false,
   isSettingsOpen: false,
   selectedAgent: 'coder',
   selectedModel: 'openrouter/auto',
@@ -245,7 +246,7 @@ export const useAppStore = create<AppState>((set) => ({
   setIsOnboarded: (onboarded) => set({ isOnboarded: onboarded }),
 
   // Preview
-  isPreviewOpen: true,
+  isPreviewOpen: false,
   setIsPreviewOpen: (open) => set({ isPreviewOpen: open }),
   previewFiles: { html: '', css: '', js: '' },
   setPreviewFiles: (files) => set({ previewFiles: files }),

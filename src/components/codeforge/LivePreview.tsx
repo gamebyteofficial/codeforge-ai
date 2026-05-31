@@ -387,6 +387,12 @@ export default function LivePreview() {
         <div className="flex items-center gap-2 min-w-0">
           <Monitor className="size-3.5 text-emerald-400 shrink-0" />
           <span className="text-xs font-medium text-zinc-300 shrink-0">Preview</span>
+          {!isEmpty && (
+            <span className="flex items-center gap-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400 animate-pulse">
+              <span className="size-1.5 rounded-full bg-emerald-400" />
+              LIVE
+            </span>
+          )}
           <div className="flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-800/60 px-2 py-0.5 min-w-0 max-w-[200px]">
             <Globe className="size-3 text-zinc-500 shrink-0" />
             <span className="truncate text-[11px] text-zinc-500">

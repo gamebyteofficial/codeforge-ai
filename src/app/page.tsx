@@ -23,6 +23,7 @@ import {
   Wifi,
   HardDrive,
   Keyboard,
+  Sparkles,
 } from 'lucide-react';
 import { useAppStore, type SidebarTab } from '@/store';
 import { useUIState, useStore, useFileState, usePreviewState } from '@/store/hooks';
@@ -356,7 +357,7 @@ export default function Home() {
                   </div>
                 </div>
               </ResizablePanel>
-              <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors w-px" />
+              <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
             </>
           )}
 
@@ -370,7 +371,7 @@ export default function Home() {
                   <ResizablePanel defaultSize={40} minSize={25} maxSize={60}>
                     <ChatPanel />
                   </ResizablePanel>
-                  <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors w-px" />
+                  <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
                   {/* Code Editor */}
                   <ResizablePanel defaultSize={isPreviewOpen ? 40 : 60} minSize={30}>
                     <div className="flex h-full flex-col">
@@ -406,7 +407,7 @@ export default function Home() {
                   {/* Live Preview Panel — lazy loaded */}
                   {isPreviewOpen && (
                     <>
-                      <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors w-px" />
+                      <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
                       <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
                         <Suspense fallback={<PanelSkeleton />}>
                           <LivePreview />
@@ -420,7 +421,7 @@ export default function Home() {
               {/* Bottom: Terminal — lazy loaded */}
               {isBottomPanelOpen && (
                 <>
-                  <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors h-px" />
+                  <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 h-px" />
                   <ResizablePanel defaultSize={35} minSize={15} maxSize={60}>
                     <Suspense fallback={<PanelSkeleton />}>
                       <Terminal />
@@ -434,7 +435,7 @@ export default function Home() {
       </div>
 
       {/* Bottom Status Bar */}
-      <footer className="flex h-6 items-center justify-between border-t border-zinc-800 bg-zinc-900/95 px-3">
+      <footer className="flex h-6 items-center justify-between border-t border-zinc-800 bg-zinc-900/95 px-3 backdrop-blur-md">
         <div className="flex items-center gap-3">
           {/* Terminal toggle */}
           <button
@@ -483,7 +484,7 @@ export default function Home() {
 
           {/* Project info */}
           <span className="text-[10px] text-zinc-600">
-            CodeForge AI v1.0
+            CodeForge AI v2.0
           </span>
 
           {/* Model info */}
@@ -533,6 +534,22 @@ export default function Home() {
             <TooltipContent side="top" className="text-xs">
               Keyboard shortcuts
             </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => {
+                  const textarea = document.querySelector('textarea[placeholder="Ask CodeForge AI..."]') as HTMLTextAreaElement;
+                  textarea?.focus();
+                }}
+                className="flex items-center gap-1 text-[10px] text-zinc-600 transition-colors hover:text-emerald-400"
+              >
+                <Sparkles className="size-3" />
+                Quick Ask
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Focus chat input</TooltipContent>
           </Tooltip>
 
           <span className="text-[10px] text-zinc-600">
