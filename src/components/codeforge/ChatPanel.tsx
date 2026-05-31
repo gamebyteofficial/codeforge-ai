@@ -22,6 +22,7 @@ import {
   Loader2,
   Sparkles,
   Hash,
+  ChevronDown,
 } from 'lucide-react';
 import { useAppStore, type AgentType } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -70,6 +76,39 @@ const AGENT_CONFIG: Record<AgentType, { label: string; icon: React.ReactNode; co
     color: 'text-violet-400',
   },
 };
+
+// Model options grouped by provider
+type ProviderKey = 'openai' | 'anthropic' | 'gemini' | 'qwen' | 'deepseek' | 'mistral' | 'openrouter';
+
+interface ModelOption {
+  id: string;
+  name: string;
+  provider: ProviderKey;
+  providerName: string;
+  icon: string;
+}
+
+const MODEL_OPTIONS: ModelOption[] = [
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'o1', name: 'o1', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'o1-mini', name: 'o1 Mini', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
+  { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
+  { id: 'claude-3-haiku', name: 'Claude 3 Haiku', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
+  { id: 'qwen-2.5-72b', name: 'Qwen 2.5 72B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
+  { id: 'qwen-2.5-coder-32b', name: 'Qwen 2.5 Coder 32B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
+  { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
+  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
+  { id: 'mistral-large', name: 'Mistral Large', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
+  { id: 'mistral-medium', name: 'Mistral Medium', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
+  { id: 'codestral', name: 'Codestral', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
+  { id: 'auto', name: 'Auto (OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+];
 
 const SUGGESTED_PROMPTS = [
   { label: 'Build a React dashboard with charts', icon: <FileCode2 className="size-4" /> },
@@ -198,21 +237,16 @@ function MarkdownRenderer({ content, onApplyCode }: { content: string; onApplyCo
           const match = /language-(\w+)/.exec(className || '');
           const codeString = String(children).replace(/\n$/, '');
 
-          // Detect if this is an inline code or a fenced code block
-          // react-markdown v10 renders fenced code blocks with a `className` that includes language-
-          // Inline code will NOT have the language- class and will be inside a <p> tag
           if (match) {
             return (
               <CodeBlock language={match[1]} code={codeString} onApply={onApplyCode} />
             );
           }
 
-          // If no language class but it looks like a block (multi-line), still render as block
           if (codeString.includes('\n')) {
             return <CodeBlock language="" code={codeString} onApply={onApplyCode} />;
           }
 
-          // Inline code
           return (
             <code
               className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-sm text-emerald-400"
@@ -283,6 +317,74 @@ function MarkdownRenderer({ content, onApplyCode }: { content: string; onApplyCo
 }
 
 // ---------------------------------------------------------------------------
+// Model Selector Popover
+// ---------------------------------------------------------------------------
+
+function ModelSelector({
+  selectedModel,
+  onModelChange,
+}: {
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const currentModel = MODEL_OPTIONS.find((m) => m.id === selectedModel) || MODEL_OPTIONS[0];
+
+  // Group models by provider
+  const groupedModels = MODEL_OPTIONS.reduce<Record<string, ModelOption[]>>((acc, model) => {
+    if (!acc[model.provider]) acc[model.provider] = [];
+    acc[model.provider].push(model);
+    return acc;
+  }, {});
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-700/80 hover:text-zinc-100">
+          <span className="text-sm">{currentModel.icon}</span>
+          <span className="max-w-[120px] truncate">{currentModel.name}</span>
+          <ChevronDown className="size-3 text-zinc-500" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-64 border-zinc-700 bg-zinc-800 p-1 shadow-xl"
+      >
+        <div className="max-h-80 overflow-y-auto custom-scrollbar">
+          {Object.entries(groupedModels).map(([provider, models]) => (
+            <div key={provider}>
+              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                {models[0].providerName}
+              </div>
+              {models.map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => {
+                    onModelChange(model.id);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                    selectedModel === model.id
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+                  }`}
+                >
+                  <span className="text-sm">{model.icon}</span>
+                  <span className="flex-1 text-left">{model.name}</span>
+                  {selectedModel === model.id && (
+                    <Check className="size-3 text-emerald-400" />
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ChatHeader
 // ---------------------------------------------------------------------------
 
@@ -291,6 +393,10 @@ function ChatHeader() {
     currentConversation,
     setCurrentConversation,
     isChatLoading,
+    selectedModel,
+    setSelectedModel,
+    settings,
+    setSettings,
   } = useAppStore();
 
   const totalTokens = currentConversation?.messages.reduce(
@@ -306,14 +412,20 @@ function ChatHeader() {
     setCurrentConversation(null);
   };
 
+  const handleModelChange = useCallback((model: string) => {
+    setSelectedModel(model);
+    // Also persist to settings
+    setSettings({ ...settings, model });
+  }, [setSelectedModel, settings, setSettings]);
+
   return (
-    <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/80 px-4 py-2.5 backdrop-blur-sm">
-      <div className="flex items-center gap-3">
-        <div className="flex size-7 items-center justify-center rounded-md bg-emerald-500/10">
+    <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 backdrop-blur-sm">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/10">
           <Sparkles className="size-4 text-emerald-500" />
         </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-medium text-zinc-100">
+        <div className="flex flex-col min-w-0">
+          <span className="text-sm font-medium text-zinc-100 truncate">
             {currentConversation?.title ?? 'New Conversation'}
           </span>
           {totalTokens !== undefined && totalTokens > 0 && (
@@ -325,13 +437,18 @@ function ChatHeader() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
+        {/* Model Selector */}
+        <ModelSelector selectedModel={selectedModel} onModelChange={handleModelChange} />
+
+        <div className="h-4 w-px bg-zinc-800" />
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 text-zinc-400 hover:text-white"
+              className="size-7 text-zinc-400 hover:text-white"
               onClick={handleNewChat}
               disabled={isChatLoading}
             >
@@ -346,7 +463,7 @@ function ChatHeader() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 text-zinc-400 hover:text-red-400"
+              className="size-7 text-zinc-400 hover:text-red-400"
               onClick={handleDeleteChat}
               disabled={!currentConversation || isChatLoading}
             >
@@ -582,7 +699,7 @@ function MessageInput({
         {isLoading && (
           <span className="flex items-center gap-1.5 text-[11px] text-emerald-400/80">
             <LoadingDots />
-            Generating
+            Streaming
           </span>
         )}
       </div>
@@ -605,15 +722,19 @@ export default function ChatPanel() {
     setCurrentFile,
     currentFile,
     selectedAgent,
+    selectedModel,
   } = useAppStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamingContentRef = useRef<string>('');
+  const [streamingContent, setStreamingContent] = useState<string>('');
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentConversation?.messages.length, isChatLoading]);
+  }, [currentConversation?.messages.length, streamingContent, isChatLoading]);
 
   const handleApplyCode = useCallback(
     (code: string) => {
@@ -649,16 +770,21 @@ export default function ChatPanel() {
         addMessageToConversation(userMessage);
       }
 
-      // Call API
+      // Call API with streaming
       setIsChatLoading(true);
+      streamingContentRef.current = '';
+      setStreamingContent('');
+
       try {
         const conversationId = currentConversation?.id ?? userMessage.id;
-        // Build conversation history for context
         const existingMessages = currentConversation?.messages ?? [];
         const history = existingMessages.map((m) => ({
           role: m.role,
           content: m.content,
         }));
+
+        // Create abort controller for cancellation
+        abortControllerRef.current = new AbortController();
 
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -668,38 +794,111 @@ export default function ChatPanel() {
             conversationId,
             projectId: currentProject?.id,
             agent: selectedAgent,
+            model: selectedModel,
             history,
+            stream: true,
           }),
+          signal: abortControllerRef.current.signal,
         });
 
         if (!res.ok) {
           throw new Error(`API error: ${res.status}`);
         }
 
-        const data = await res.json();
+        // Check if the response is a stream
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('text/event-stream') || contentType.includes('text/plain')) {
+          // Handle streaming response
+          const reader = res.body?.getReader();
+          if (!reader) throw new Error('No readable stream');
 
-        const assistantMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant' as const,
-          content: data.message ?? data.content ?? 'No response received.',
-          tokens: data.tokens,
-          model: data.model,
-          createdAt: new Date().toISOString(),
-        };
+          const decoder = new TextDecoder();
+          let fullContent = '';
 
-        addMessageToConversation(assistantMessage);
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === 'data: [DONE]') continue;
+
+              if (trimmed.startsWith('data: ')) {
+                const data = trimmed.slice(6);
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.error) {
+                    fullContent += `\n\n⚠️ Error: ${parsed.error}`;
+                    setStreamingContent(fullContent);
+                    streamingContentRef.current = fullContent;
+                  } else if (parsed.content) {
+                    fullContent += parsed.content;
+                    setStreamingContent(fullContent);
+                    streamingContentRef.current = fullContent;
+                  }
+                } catch {
+                  // Not valid JSON — ignore
+                }
+              }
+            }
+          }
+
+          // Finalize the streaming message
+          const assistantMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content: fullContent || 'No response received.',
+            tokens: Math.ceil(message.length / 4) + Math.ceil(fullContent.length / 4),
+            model: selectedModel,
+            createdAt: new Date().toISOString(),
+          };
+          addMessageToConversation(assistantMessage);
+        } else {
+          // Handle JSON response (non-streaming fallback)
+          const data = await res.json();
+          const assistantMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content: data.message ?? data.content ?? 'No response received.',
+            tokens: data.tokens,
+            model: data.model || selectedModel,
+            createdAt: new Date().toISOString(),
+          };
+          addMessageToConversation(assistantMessage);
+        }
       } catch (error) {
-        const errorMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant' as const,
-          content:
-            'Sorry, I encountered an error processing your request. Please try again.',
-          createdAt: new Date().toISOString(),
-        };
-        addMessageToConversation(errorMessage);
-        console.error('Chat API error:', error);
+        if ((error as Error).name === 'AbortError') {
+          // User cancelled — finalize what we have
+          if (streamingContentRef.current) {
+            const assistantMessage = {
+              id: crypto.randomUUID(),
+              role: 'assistant' as const,
+              content: streamingContentRef.current,
+              tokens: Math.ceil(streamingContentRef.current.length / 4),
+              model: selectedModel,
+              createdAt: new Date().toISOString(),
+            };
+            addMessageToConversation(assistantMessage);
+          }
+        } else {
+          const errorMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content:
+              'Sorry, I encountered an error processing your request. Please try again.',
+            createdAt: new Date().toISOString(),
+          };
+          addMessageToConversation(errorMessage);
+          console.error('Chat API error:', error);
+        }
       } finally {
         setIsChatLoading(false);
+        setStreamingContent('');
+        streamingContentRef.current = '';
+        abortControllerRef.current = null;
       }
     },
     [
@@ -709,6 +908,7 @@ export default function ChatPanel() {
       addMessageToConversation,
       setCurrentConversation,
       selectedAgent,
+      selectedModel,
     ],
   );
 
@@ -744,9 +944,35 @@ export default function ChatPanel() {
               ))}
             </AnimatePresence>
 
-            {/* Loading indicator */}
+            {/* Streaming content - show in real-time */}
             <AnimatePresence>
-              {isChatLoading && (
+              {isChatLoading && streamingContent && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex gap-3 px-4 py-3"
+                >
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                    <Bot className="size-4" />
+                  </div>
+                  <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
+                    <span className="text-[11px] font-medium text-emerald-400/80">
+                      CodeForge AI
+                    </span>
+                    <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300">
+                      <MarkdownRenderer content={streamingContent} onApplyCode={handleApplyCode} />
+                      <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Loading indicator (before streaming starts) */}
+            <AnimatePresence>
+              {isChatLoading && !streamingContent && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -763,7 +989,7 @@ export default function ChatPanel() {
                     </span>
                     <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-3 text-sm text-zinc-400">
                       <Loader2 className="size-3.5 animate-spin text-emerald-500" />
-                      <span>Thinking</span>
+                      <span>Connecting</span>
                       <LoadingDots />
                     </div>
                   </div>

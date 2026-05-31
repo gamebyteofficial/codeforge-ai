@@ -132,12 +132,14 @@ interface AppState {
   isBottomPanelOpen: boolean;
   isSettingsOpen: boolean;
   selectedAgent: AgentType;
+  selectedModel: string;
   setSidebarTab: (tab: SidebarTab) => void;
   setBottomTab: (tab: BottomTab) => void;
   setIsSidebarOpen: (open: boolean) => void;
   setIsBottomPanelOpen: (open: boolean) => void;
   setIsSettingsOpen: (open: boolean) => void;
   setSelectedAgent: (agent: AgentType) => void;
+  setSelectedModel: (model: string) => void;
 
   // Settings
   settings: Record<string, string>;
@@ -225,12 +227,14 @@ export const useAppStore = create<AppState>((set) => ({
   isBottomPanelOpen: true,
   isSettingsOpen: false,
   selectedAgent: 'coder',
+  selectedModel: 'gpt-4o',
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   setBottomTab: (tab) => set({ bottomTab: tab }),
   setIsSidebarOpen: (open) => set({ isSidebarOpen: open }),
   setIsBottomPanelOpen: (open) => set({ isBottomPanelOpen: open }),
   setIsSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setSelectedAgent: (agent) => set({ selectedAgent: agent }),
+  setSelectedModel: (model) => set({ selectedModel: model }),
 
   // Settings
   settings: {},

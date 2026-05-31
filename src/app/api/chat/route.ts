@@ -65,15 +65,19 @@ const DEFAULT_SYSTEM_PROMPT = `You are CodeForge AI, an intelligent coding compa
 When writing code, always use markdown code blocks with the appropriate language tag. Provide complete, runnable code snippets.
 Be concise but thorough. Explain your reasoning when suggesting changes.`;
 
+// ─── Streaming response handler ─────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, conversationId, projectId, agent, history } = body as {
+    const { message, conversationId, projectId, agent, history, model, stream: shouldStream = true } = body as {
       message: string;
       conversationId?: string;
       projectId?: string;
       agent?: string;
       history?: { role: string; content: string }[];
+      model?: string;
+      stream?: boolean;
     };
 
     if (!message || typeof message !== 'string') {
@@ -108,22 +112,145 @@ export async function POST(req: NextRequest) {
     // Add current user message
     messages.push({ role: 'user', content: message });
 
-    // Call LLM
-    const completion = await zai.chat.completions.create({
+    // Build request body with optional model
+    const createBody: Record<string, unknown> = {
       messages,
       thinking: { type: 'disabled' },
-    });
+      stream: shouldStream,
+    };
+    if (model) {
+      createBody.model = model;
+    }
 
-    const responseContent = completion.choices[0]?.message?.content ?? 'No response received.';
+    if (shouldStream) {
+      // Streaming mode — return SSE stream
+      const sdkResponse = await zai.chat.completions.create(createBody as any);
 
-    // Estimate token count
+      // SDK returns a ReadableStream when stream: true
+      if (sdkResponse instanceof ReadableStream || (sdkResponse && typeof sdkResponse.getReader === 'function')) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const reader = (sdkResponse as ReadableStream).getReader();
+            const decoder = new TextDecoder();
+
+            try {
+              let buffer = '';
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (!trimmed) continue;
+
+                  if (trimmed.startsWith('data: ')) {
+                    const data = trimmed.slice(6);
+                    if (data === '[DONE]') {
+                      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                      continue;
+                    }
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices?.[0]?.delta?.content || '';
+                      if (content) {
+                        const sseMessage = JSON.stringify({ content, model: parsed.model || model || 'codeforge-ai' });
+                        controller.enqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                      }
+                    } catch {
+                      // Not valid JSON — forward as plain text
+                      const sseMessage = JSON.stringify({ content: data });
+                      controller.enqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                    }
+                  } else {
+                    // Try to parse as raw JSON (non-SSE format)
+                    try {
+                      const parsed = JSON.parse(trimmed);
+                      const content = parsed.choices?.[0]?.delta?.content || '';
+                      if (content) {
+                        const sseMessage = JSON.stringify({ content, model: parsed.model || model || 'codeforge-ai' });
+                        controller.enqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                      }
+                    } catch {
+                      // Not JSON either — treat as raw text chunk
+                      if (trimmed) {
+                        const sseMessage = JSON.stringify({ content: trimmed });
+                        controller.enqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Process any remaining buffer
+              if (buffer.trim()) {
+                const trimmed = buffer.trim();
+                if (trimmed.startsWith('data: ')) {
+                  const data = trimmed.slice(6);
+                  if (data !== '[DONE]') {
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices?.[0]?.delta?.content || '';
+                      if (content) {
+                        const sseMessage = JSON.stringify({ content, model: parsed.model || model || 'codeforge-ai' });
+                        controller.enqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }
+                }
+              }
+
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            } catch (error) {
+              console.error('Stream reading error:', error);
+              const errorMsg = JSON.stringify({ error: 'Stream interrupted' });
+              controller.enqueue(encoder.encode(`data: ${errorMsg}\n\n`));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            }
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+        });
+      }
+
+      // Fallback: SDK didn't return a stream — treat as non-streaming
+      const responseContent = typeof sdkResponse === 'object' && sdkResponse.choices?.[0]?.message?.content
+        ? sdkResponse.choices[0].message.content
+        : 'No response received.';
+
+      return NextResponse.json({
+        conversationId: conversationId || crypto.randomUUID(),
+        message: responseContent,
+        tokens: Math.ceil(message.length / 4) + Math.ceil(responseContent.length / 4),
+        model: model || 'codeforge-ai',
+        projectId: projectId || null,
+      });
+    }
+
+    // Non-streaming mode
+    const completion = await zai.chat.completions.create(createBody as any);
+    const responseContent = completion.choices?.[0]?.message?.content ?? 'No response received.';
     const tokenCount = Math.ceil(message.length / 4) + Math.ceil(responseContent.length / 4);
 
     return NextResponse.json({
       conversationId: conversationId || crypto.randomUUID(),
       message: responseContent,
       tokens: tokenCount,
-      model: 'codeforge-ai',
+      model: model || 'codeforge-ai',
       projectId: projectId || null,
     });
   } catch (error) {

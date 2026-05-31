@@ -53,6 +53,8 @@ export default function Home() {
     setIsPreviewOpen,
     settings,
     setSettings,
+    setSelectedModel,
+    selectedModel,
   } = useAppStore();
 
   // Check if user has already completed onboarding (has API key in settings)
@@ -64,6 +66,10 @@ export default function Home() {
           const data = await res.json();
           if (data.settings && data.settings.apiKey && data.settings.apiKey.length > 0) {
             setSettings(data.settings);
+            // Sync selectedModel from saved settings
+            if (data.settings.model) {
+              setSelectedModel(data.settings.model);
+            }
             setIsOnboarded(true);
           }
         }
@@ -72,7 +78,7 @@ export default function Home() {
       }
     };
     checkOnboarding();
-  }, [setIsOnboarded, setSettings]);
+  }, [setIsOnboarded, setSettings, setSelectedModel]);
 
   // Show onboarding wizard if not onboarded
   if (!isOnboarded) {
@@ -275,11 +281,11 @@ export default function Home() {
           </span>
 
           {/* Model info */}
-          {settings.model && (
+          {selectedModel && (
             <>
               <div className="h-3 w-px bg-zinc-800" />
               <span className="text-[10px] text-zinc-600">
-                {settings.model}
+                {selectedModel}
               </span>
             </>
           )}

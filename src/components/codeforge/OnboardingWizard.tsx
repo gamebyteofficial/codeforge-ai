@@ -105,7 +105,7 @@ const slideVariants = {
 // ─── OnboardingWizard Component ──────────────────────────────────────────────
 
 export default function OnboardingWizard() {
-  const { setSettings, setIsOnboarded } = useAppStore();
+  const { setSettings, setIsOnboarded, setSelectedModel } = useAppStore();
 
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -190,6 +190,7 @@ export default function OnboardingWizard() {
       if (res.ok) {
         // Update Zustand store
         setSettings(settings);
+        setSelectedModel(model);
         setIsOnboarded(true);
         toast.success('Setup complete!', {
           description: `You're all set with ${PROVIDERS[provider].name} — ${model}`,
@@ -206,7 +207,7 @@ export default function OnboardingWizard() {
     } finally {
       setIsSaving(false);
     }
-  }, [provider, apiKey, model, temperature, maxTokens, setSettings, setIsOnboarded]);
+  }, [provider, apiKey, model, temperature, maxTokens, setSettings, setIsOnboarded, setSelectedModel]);
 
   const canGoNext = step === 0
     ? true
