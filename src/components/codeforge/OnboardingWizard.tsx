@@ -88,6 +88,7 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
   openrouter: {
     name: 'OpenRouter',
     models: [
+      'openrouter/auto',
       'google/gemma-2-9b-it:free',
       'meta-llama/llama-3.1-8b-instruct:free',
       'mistralai/mistral-7b-instruct:free',

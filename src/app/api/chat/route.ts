@@ -109,8 +109,9 @@ export async function POST(req: NextRequest) {
     // Add current user message
     messages.push({ role: 'user', content: message });
 
-    // Use provided model or default
-    const selectedModel = model || 'gpt-4o';
+    // Use provided model or default to openrouter/auto (works with any provider)
+    // The streamLLM function will route based on the configured provider in settings
+    const selectedModel = model || 'openrouter/auto';
 
     if (shouldStream) {
       // ─── Streaming Response ───────────────────────────────────────────

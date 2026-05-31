@@ -88,44 +88,46 @@ interface ModelOption {
   icon: string;
 }
 
-const MODEL_OPTIONS: ModelOption[] = [
-  // OpenAI
+// All possible model options, grouped by provider.
+// The ModelSelector filters these based on the user's configured provider.
+const ALL_MODEL_OPTIONS: ModelOption[] = [
+  // ── OpenAI direct ──
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'o1', name: 'o1', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
   { id: 'o1-mini', name: 'o1 Mini', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
-  // Anthropic
+  // ── Anthropic direct ──
   { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
   { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
   { id: 'claude-3-haiku', name: 'Claude 3 Haiku', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
-  // Gemini
+  // ── Gemini direct ──
   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
   { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
   { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
-  // Qwen
+  // ── Qwen direct ──
   { id: 'qwen-2.5-72b', name: 'Qwen 2.5 72B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
   { id: 'qwen-2.5-coder-32b', name: 'Qwen 2.5 Coder 32B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
-  // DeepSeek
+  // ── DeepSeek direct ──
   { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
   { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
-  // Mistral
+  // ── Mistral direct ──
   { id: 'mistral-large', name: 'Mistral Large', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
   { id: 'mistral-medium', name: 'Mistral Medium', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
   { id: 'codestral', name: 'Codestral', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
-  // OpenRouter - Free models
+  // ── OpenRouter ── (all models available through OpenRouter)
+  { id: 'openrouter/auto', name: 'Auto (Best Available)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
   { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
   { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
   { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
   { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
   { id: 'huggingfaceh4/zephyr-7b-beta:free', name: 'Zephyr 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  // OpenRouter - Paid models
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
 ];
 
 const SUGGESTED_PROMPTS = [
@@ -346,14 +348,32 @@ function ModelSelector({
   onModelChange: (model: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { settings } = useAppStore();
+  const configuredProvider = (settings.provider || 'openrouter') as ProviderKey;
+
+  // Filter models based on the configured provider
+  // OpenRouter can access all models; other providers only see their own models
+  const MODEL_OPTIONS = configuredProvider === 'openrouter'
+    ? ALL_MODEL_OPTIONS.filter((m) => m.provider === 'openrouter')
+    : ALL_MODEL_OPTIONS.filter((m) => m.provider === configuredProvider);
+
   const currentModel = MODEL_OPTIONS.find((m) => m.id === selectedModel) || MODEL_OPTIONS[0];
 
-  // Group models by provider
-  const groupedModels = MODEL_OPTIONS.reduce<Record<string, ModelOption[]>>((acc, model) => {
-    if (!acc[model.provider]) acc[model.provider] = [];
-    acc[model.provider].push(model);
-    return acc;
-  }, {});
+  // Group models by provider (for OpenRouter, group as Free vs Paid)
+  const groupedModels = configuredProvider === 'openrouter'
+    ? (() => {
+        const free = MODEL_OPTIONS.filter((m) => m.id.includes(':free') || m.id === 'openrouter/auto');
+        const paid = MODEL_OPTIONS.filter((m) => !m.id.includes(':free') && m.id !== 'openrouter/auto');
+        const groups: Record<string, ModelOption[]> = {};
+        if (free.length) groups['Free Models'] = free;
+        if (paid.length) groups['Paid Models (via OpenRouter)'] = paid;
+        return groups;
+      })()
+    : MODEL_OPTIONS.reduce<Record<string, ModelOption[]>>((acc, model) => {
+        if (!acc[model.provider]) acc[model.provider] = [];
+        acc[model.provider].push(model);
+        return acc;
+      }, {});
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
