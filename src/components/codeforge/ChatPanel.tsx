@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback, useMemo, useDeferredValue, type FormEvent, type KeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useDeferredValue, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -541,10 +541,20 @@ function ChatHeader() {
     setCurrentConversation(null);
   };
 
-  const handleModelChange = useCallback((model: string) => {
+  const handleModelChange = useCallback(async (model: string) => {
     setSelectedModel(model);
-    // Also persist to settings
-    setSettings({ ...settings, model });
+    // Also persist to backend settings
+    const updatedSettings = { ...settings, model };
+    setSettings(updatedSettings);
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: updatedSettings }),
+      });
+    } catch {
+      // Non-critical: model choice is saved in local state
+    }
   }, [setSelectedModel, settings, setSettings]);
 
   // Show connection status

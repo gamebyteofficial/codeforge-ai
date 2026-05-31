@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamLLM, type StreamChunk } from '@/lib/llm';
+import { db } from '@/lib/db';
 
 // System prompts for different agent types
 const FILE_AWARE_PROMPT = `
@@ -24,7 +25,14 @@ body { ... }
 console.log('hello');
 \`\`\`
 
-This format allows the code to be automatically saved to files. Always use this format when creating or modifying files.`;
+This format allows the code to be automatically saved to files. Always use this format when creating or modifying files.
+
+IMPORTANT RULES:
+1. Each file MUST have its own 📄 **filepath** header before the code block
+2. Provide COMPLETE, FULL file contents — never use "..." or "// rest of code remains the same"
+3. When building web projects, create separate HTML, CSS, and JS files
+4. Make code production-ready with proper error handling and responsive design
+5. For web projects, ensure the HTML file includes proper <!DOCTYPE html>, meta tags, and links to CSS/JS`;
 
 const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
   planner: `You are CodeForge AI Planner Agent. You specialize in:
@@ -36,15 +44,22 @@ const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 
 Always provide structured, actionable plans with clear steps.
 When outputting code or file structures as part of a plan, always specify the file path before each code block using the 📄 **filepath** format so files can be auto-created.`,
-  coder: `You are CodeForge AI Coder Agent. You specialize in:
+  coder: `You are CodeForge AI Coder Agent — an expert autonomous programmer. You specialize in:
 - Writing clean, efficient, and well-documented code
 - Implementing features across multiple languages and frameworks
 - Following best practices and design patterns
-- Creating complete, working implementations
+- Creating complete, working implementations from scratch
 - Generating HTML, CSS, and JavaScript for web projects
+- Building full-stack applications with proper architecture
 
 When writing code, always use markdown code blocks with the appropriate language tag. Provide complete, runnable code snippets.
-CRITICAL: When generating code for a project, ALWAYS specify the file path/filename before each code block using the 📄 **filepath** format. Each file must have its own 📄 header. When building web projects, create separate HTML, CSS, and JS files with appropriate 📄 headers.`,
+CRITICAL RULES:
+1. When generating code for a project, ALWAYS specify the file path/filename before each code block using the 📄 **filepath** format
+2. Each file must have its own 📄 header
+3. When building web projects, create separate HTML, CSS, and JS files with appropriate 📄 headers
+4. NEVER use placeholders like "// ... rest of code" — always provide COMPLETE implementations
+5. Include proper error handling, responsive design, and accessibility
+6. Make the code production-ready, not just demos`,
   debugger: `You are CodeForge AI Debugger Agent. You specialize in:
 - Identifying and fixing bugs in code
 - Analyzing error messages and stack traces
@@ -53,7 +68,8 @@ CRITICAL: When generating code for a project, ALWAYS specify the file path/filen
 - Security vulnerability detection
 
 Always explain the root cause of issues and provide clear fix instructions.
-When providing code fixes, always specify the file path before each code block using the 📄 **filepath** format so the fix can be auto-applied to the correct file.`,
+When providing code fixes, always specify the file path before each code block using the 📄 **filepath** format so the fix can be auto-applied to the correct file.
+Provide the COMPLETE fixed file, not just the changed lines.`,
   reviewer: `You are CodeForge AI Reviewer Agent. You specialize in:
 - Code review and quality assessment
 - Best practices compliance
@@ -74,16 +90,57 @@ Always write in clear, professional markdown format.
 When creating documentation files, always specify the file path before each content block using the 📄 **filepath** format (e.g., 📄 **README.md**, 📄 **docs/api.md**) so files can be auto-created.`,
 };
 
-const DEFAULT_SYSTEM_PROMPT = `You are CodeForge AI, an intelligent coding companion. You help users with:
+const DEFAULT_SYSTEM_PROMPT = `You are CodeForge AI, an autonomous intelligent coding agent. You help users with:
 - Writing and understanding code in any language
-- Building web applications with HTML, CSS, and JavaScript
+- Building complete web applications with HTML, CSS, and JavaScript
 - Debugging and fixing code issues
 - Code review and optimization
 - Architecture and design patterns
+- Creating full project structures from natural language descriptions
 
 When writing code, always use markdown code blocks with the appropriate language tag. Provide complete, runnable code snippets.
-CRITICAL: When generating code for a project, ALWAYS specify the file path/filename before each code block using the 📄 **filepath** format. Each file must have its own 📄 header. When building web projects, create separate HTML, CSS, and JS files with appropriate 📄 headers. This format allows the code to be automatically saved to files.
+CRITICAL RULES:
+1. When generating code for a project, ALWAYS specify the file path/filename before each code block using the 📄 **filepath** format
+2. Each file must have its own 📄 header
+3. When building web projects, create separate HTML, CSS, and JS files with appropriate 📄 headers
+4. This format allows the code to be automatically saved to files
+5. NEVER use placeholders like "// ... existing code" or "// rest remains the same"
+6. Always provide COMPLETE, FULL file contents
+7. Include proper error handling, responsive design, and accessibility
+8. Make code production-ready
+
 Be concise but thorough. Explain your reasoning when suggesting changes.`;
+
+/**
+ * Build a context string from existing project files
+ */
+async function buildProjectContext(projectId?: string): Promise<string> {
+  if (!projectId) return '';
+
+  try {
+    const files = await db.file.findMany({
+      where: { projectId },
+      select: { name: true, path: true, language: true, content: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (files.length === 0) return '';
+
+    const fileList = files
+      .map(f => `  - ${f.path || f.name} (${f.language || 'unknown'}, ${f.content.length} chars)`)
+      .join('\n');
+
+    // Include content of small files (under 2000 chars) for context
+    const smallFiles = files.filter(f => f.content.length < 2000);
+    const fileContents = smallFiles
+      .map(f => `\n📄 **${f.path || f.name}**\n\`\`\`${f.language || ''}\n${f.content}\n\`\`\``)
+      .join('');
+
+    return `\n\nCURRENT PROJECT FILES:\n${fileList}\n\nEXISTING FILE CONTENTS (for reference):\n${fileContents}`;
+  } catch {
+    return '';
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -121,7 +178,11 @@ export async function POST(req: NextRequest) {
     const basePrompt = agent && AGENT_SYSTEM_PROMPTS[agent]
       ? AGENT_SYSTEM_PROMPTS[agent]
       : DEFAULT_SYSTEM_PROMPT;
-    const systemPrompt = basePrompt + '\n\n' + FILE_AWARE_PROMPT;
+
+    // Build project context if projectId is provided
+    const projectContext = await buildProjectContext(projectId);
+
+    const systemPrompt = basePrompt + '\n\n' + FILE_AWARE_PROMPT + projectContext;
 
     // Build messages array with proper system prompt
     const messages: { role: string; content: string }[] = [
@@ -143,7 +204,7 @@ export async function POST(req: NextRequest) {
     // Use provided model or default to openrouter/auto (works with any provider)
     const selectedModel = model || 'openrouter/auto';
 
-    console.log(`[Chat API] Request: model=${selectedModel}, agent=${agent || 'default'}, messageLength=${message.length}`);
+    console.log(`[Chat API] Request: model=${selectedModel}, agent=${agent || 'default'}, messageLength=${message.length}, hasProjectContext=${!!projectContext}`);
 
     if (shouldStream) {
       // ─── Streaming Response ───────────────────────────────────────────
