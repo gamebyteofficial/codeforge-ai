@@ -56,6 +56,7 @@ interface ProviderInfo {
   name: string;
   models: string[];
   icon: string;
+  keyHint?: string;
 }
 
 const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
@@ -63,36 +64,43 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
     name: 'OpenAI',
     models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
     icon: '🟢',
+    keyHint: 'sk-... (from platform.openai.com)',
   },
   anthropic: {
     name: 'Anthropic',
     models: ['claude-3.5-sonnet', 'claude-3-opus', 'claude-3-haiku'],
     icon: '🟠',
+    keyHint: 'sk-ant-... (from console.anthropic.com)',
   },
   gemini: {
-    name: 'Gemini',
+    name: 'Google Gemini',
     models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
     icon: '🔵',
+    keyHint: 'AI... (from aistudio.google.com)',
   },
   qwen: {
     name: 'Qwen',
     models: ['qwen-2.5-72b', 'qwen-2.5-coder-32b'],
     icon: '🟣',
+    keyHint: 'sk-... (from dashscope.aliyuncs.com)',
   },
   deepseek: {
     name: 'DeepSeek',
     models: ['deepseek-chat', 'deepseek-coder'],
     icon: '🔷',
+    keyHint: 'sk-... (from platform.deepseek.com)',
   },
   mistral: {
     name: 'Mistral',
     models: ['mistral-large', 'mistral-medium', 'codestral'],
     icon: '🟡',
+    keyHint: '... (from console.mistral.ai)',
   },
   openrouter: {
     name: 'OpenRouter',
     models: ['auto'],
     icon: '🌐',
+    keyHint: 'sk-or-... (from openrouter.ai)',
   },
 };
 
@@ -381,7 +389,7 @@ export default function SettingsModal() {
                       </Button>
                     </div>
                     <p className="text-xs text-zinc-600">
-                      Your API key is stored securely and never shared.
+                      Your {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider} API key. Used to call the provider directly from the backend.
                     </p>
                   </div>
 

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { testProviderConnection, type ProviderKey } from '@/lib/llm';
 
 export async function GET() {
   try {
@@ -27,22 +28,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Settings object is required' }, { status: 400 });
     }
 
-    // Handle test connection request
+    // Handle real connection test
     if (testConnection) {
       const apiKey = settings.apiKey;
-      const provider = settings.provider;
+      const provider = (settings.provider || 'openai') as ProviderKey;
 
       if (!apiKey) {
         return NextResponse.json(
           { success: false, error: 'API key is required to test connection' },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
-      // Simulate connection test (in production, this would make a real API call)
-      // Check that the key looks reasonable (non-empty and has minimum length)
-      const isValid = apiKey.length >= 8;
-      if (isValid) {
+      const result = await testProviderConnection(provider, apiKey);
+
+      if (result.success) {
         return NextResponse.json({
           success: true,
           provider,
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       } else {
         return NextResponse.json({
           success: false,
-          error: 'Invalid API key format',
+          error: result.error || 'Connection failed',
         });
       }
     }
