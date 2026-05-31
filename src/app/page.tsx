@@ -9,6 +9,8 @@ import TaskTracker from '@/components/codeforge/TaskTracker';
 import Terminal from '@/components/codeforge/Terminal';
 import TopBar from '@/components/codeforge/TopBar';
 import SettingsModal from '@/components/codeforge/SettingsModal';
+import OnboardingWizard from '@/components/codeforge/OnboardingWizard';
+import LivePreview from '@/components/codeforge/LivePreview';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +23,7 @@ import {
   Terminal as TerminalIcon,
   ChevronDown,
   ChevronUp,
+  Eye,
 } from 'lucide-react';
 import { useAppStore, type SidebarTab } from '@/store';
 import {
@@ -44,7 +47,51 @@ export default function Home() {
     setSidebarTab,
     isBottomPanelOpen,
     setIsBottomPanelOpen,
+    isOnboarded,
+    setIsOnboarded,
+    isPreviewOpen,
+    setIsPreviewOpen,
+    settings,
+    setSettings,
   } = useAppStore();
+
+  // Check if user has already completed onboarding (has API key in settings)
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings && data.settings.apiKey && data.settings.apiKey.length > 0) {
+            setSettings(data.settings);
+            setIsOnboarded(true);
+          }
+        }
+      } catch {
+        // If settings fetch fails, show onboarding
+      }
+    };
+    checkOnboarding();
+  }, [setIsOnboarded, setSettings]);
+
+  // Show onboarding wizard if not onboarded
+  if (!isOnboarded) {
+    return (
+      <>
+        <OnboardingWizard />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: '#18181b',
+              border: '1px solid #27272a',
+              color: '#f4f4f5',
+            },
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-zinc-950">
@@ -114,10 +161,10 @@ export default function Home() {
             </>
           )}
 
-          {/* Main Panel: Chat + Code Editor + Terminal */}
+          {/* Main Panel: Chat + Code Editor + Preview */}
           <ResizablePanel defaultSize={isSidebarOpen ? 72 : 100} minSize={40}>
             <ResizablePanelGroup direction="vertical" className="h-full">
-              {/* Top: Chat + Code Editor */}
+              {/* Top: Chat + Code Editor + Preview */}
               <ResizablePanel defaultSize={65} minSize={30}>
                 <ResizablePanelGroup direction="horizontal" className="h-full">
                   {/* Chat Panel */}
@@ -126,7 +173,7 @@ export default function Home() {
                   </ResizablePanel>
                   <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors w-px" />
                   {/* Code Editor */}
-                  <ResizablePanel defaultSize={60} minSize={30}>
+                  <ResizablePanel defaultSize={isPreviewOpen ? 40 : 60} minSize={30}>
                     <div className="flex h-full flex-col">
                       {/* Mini toolbar when sidebar is closed */}
                       {!isSidebarOpen && (
@@ -157,6 +204,15 @@ export default function Home() {
                       </div>
                     </div>
                   </ResizablePanel>
+                  {/* Live Preview Panel */}
+                  {isPreviewOpen && (
+                    <>
+                      <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-colors w-px" />
+                      <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+                        <LivePreview />
+                      </ResizablePanel>
+                    </>
+                  )}
                 </ResizablePanelGroup>
               </ResizablePanel>
 
@@ -194,10 +250,39 @@ export default function Home() {
           {/* Separator */}
           <div className="h-3 w-px bg-zinc-800" />
 
+          {/* Preview toggle */}
+          <button
+            onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+            className={`flex items-center gap-1 text-[10px] transition-colors ${
+              isPreviewOpen ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <Eye className="size-3" />
+            Preview
+            {isPreviewOpen ? (
+              <ChevronDown className="size-2.5" />
+            ) : (
+              <ChevronUp className="size-2.5" />
+            )}
+          </button>
+
+          {/* Separator */}
+          <div className="h-3 w-px bg-zinc-800" />
+
           {/* Project info */}
           <span className="text-[10px] text-zinc-600">
             CodeForge AI v1.0
           </span>
+
+          {/* Model info */}
+          {settings.model && (
+            <>
+              <div className="h-3 w-px bg-zinc-800" />
+              <span className="text-[10px] text-zinc-600">
+                {settings.model}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

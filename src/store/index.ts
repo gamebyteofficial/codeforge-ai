@@ -77,6 +77,12 @@ export type AgentType = 'planner' | 'coder' | 'debugger' | 'reviewer' | 'documen
 export type SidebarTab = 'files' | 'tasks' | 'memory';
 export type BottomTab = 'terminal' | 'output';
 
+export interface PreviewFile {
+  html: string;
+  css: string;
+  js: string;
+}
+
 interface AppState {
   // Project
   currentProject: Project | null;
@@ -136,6 +142,16 @@ interface AppState {
   // Settings
   settings: Record<string, string>;
   setSettings: (settings: Record<string, string>) => void;
+
+  // Onboarding
+  isOnboarded: boolean;
+  setIsOnboarded: (onboarded: boolean) => void;
+
+  // Preview
+  isPreviewOpen: boolean;
+  setIsPreviewOpen: (open: boolean) => void;
+  previewFiles: PreviewFile;
+  setPreviewFiles: (files: PreviewFile) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -219,4 +235,14 @@ export const useAppStore = create<AppState>((set) => ({
   // Settings
   settings: {},
   setSettings: (settings) => set({ settings }),
+
+  // Onboarding
+  isOnboarded: false,
+  setIsOnboarded: (onboarded) => set({ isOnboarded: onboarded }),
+
+  // Preview
+  isPreviewOpen: false,
+  setIsPreviewOpen: (open) => set({ isPreviewOpen: open }),
+  previewFiles: { html: '', css: '', js: '' },
+  setPreviewFiles: (files) => set({ previewFiles: files }),
 }));

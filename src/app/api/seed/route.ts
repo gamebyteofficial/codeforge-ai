@@ -205,6 +205,292 @@ body {
               language: 'css',
             },
             {
+              name: 'index.html',
+              path: 'public/index.html',
+              content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeForge AI - Live Preview</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="hero-badge">✨ CodeForge AI</div>
+      <h1>Build Anything with AI</h1>
+      <p>Your intelligent coding companion that understands, plans, and creates.</p>
+      <div class="hero-buttons">
+        <button class="btn btn-primary" onclick="handleGetStarted()">Get Started</button>
+        <button class="btn btn-secondary" onclick="handleLearnMore()">Learn More</button>
+      </div>
+    </header>
+    
+    <section class="features">
+      <div class="feature-card">
+        <div class="feature-icon">🧠</div>
+        <h3>Smart Code</h3>
+        <p>AI-powered code generation with context awareness</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Fast & Reliable</h3>
+        <p>Real-time code execution and live preview</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure</h3>
+        <p>Sandboxed execution with safety checks</p>
+      </div>
+    </section>
+
+    <section class="counter-section">
+      <h2>Interactive Counter</h2>
+      <div class="counter">
+        <button class="counter-btn" onclick="decrement()">−</button>
+        <span id="counter-value" class="counter-value">0</span>
+        <button class="counter-btn" onclick="increment()">+</button>
+      </div>
+      <p class="counter-label">Click the buttons to interact!</p>
+    </section>
+  </div>
+</body>
+</html>`,
+              language: 'html',
+            },
+            {
+              name: 'preview.css',
+              path: 'public/styles.css',
+              content: `/* Live Preview Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+  color: #f4f4f5;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.hero {
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 0.4rem 1rem;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  color: #10b981;
+  margin-bottom: 1.5rem;
+}
+
+.hero h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #f4f4f5, #10b981);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 1rem;
+}
+
+.hero p {
+  font-size: 1.125rem;
+  color: #a1a1aa;
+  margin-bottom: 2rem;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: #10b981;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.feature-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+  transform: translateY(-2px);
+}
+
+.feature-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.feature-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+  font-size: 0.875rem;
+  color: #a1a1aa;
+}
+
+.counter-section {
+  text-align: center;
+  padding: 3rem 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 2rem;
+}
+
+.counter-section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.counter-btn {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: 2px solid rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.counter-btn:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  transform: scale(1.1);
+}
+
+.counter-btn:active {
+  transform: scale(0.95);
+}
+
+.counter-value {
+  font-size: 3rem;
+  font-weight: 800;
+  color: #10b981;
+  min-width: 4rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.counter-label {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #71717a;
+}`,
+              language: 'css',
+            },
+            {
+              name: 'preview.js',
+              path: 'public/script.js',
+              content: `// Interactive counter for the live preview demo
+let count = 0;
+
+function updateDisplay() {
+  const el = document.getElementById('counter-value');
+  if (el) {
+    el.textContent = count;
+    // Add a subtle animation
+    el.style.transform = 'scale(1.2)';
+    setTimeout(() => {
+      el.style.transform = 'scale(1)';
+    }, 150);
+  }
+}
+
+function increment() {
+  count++;
+  updateDisplay();
+}
+
+function decrement() {
+  count--;
+  updateDisplay();
+}
+
+function handleGetStarted() {
+  alert('Welcome to CodeForge AI! Start chatting with the AI to generate code.');
+}
+
+function handleLearnMore() {
+  alert('CodeForge AI is an intelligent coding companion that helps you build, debug, and review code.');
+}
+
+// Initialize
+console.log('CodeForge AI - Live Preview loaded!');`,
+              language: 'javascript',
+            },
+            {
               name: 'utils.py',
               path: 'src/utils.py',
               content: `"""Utility functions for the project."""

@@ -604,6 +604,7 @@ export default function ChatPanel() {
     setCurrentConversation,
     setCurrentFile,
     currentFile,
+    selectedAgent,
   } = useAppStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -652,6 +653,13 @@ export default function ChatPanel() {
       setIsChatLoading(true);
       try {
         const conversationId = currentConversation?.id ?? userMessage.id;
+        // Build conversation history for context
+        const existingMessages = currentConversation?.messages ?? [];
+        const history = existingMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -659,6 +667,8 @@ export default function ChatPanel() {
             message,
             conversationId,
             projectId: currentProject?.id,
+            agent: selectedAgent,
+            history,
           }),
         });
 
@@ -698,6 +708,7 @@ export default function ChatPanel() {
       setIsChatLoading,
       addMessageToConversation,
       setCurrentConversation,
+      selectedAgent,
     ],
   );
 

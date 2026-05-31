@@ -22,6 +22,7 @@ import {
   Database,
   Settings,
   Code2,
+  Play,
 } from 'lucide-react';
 import { useAppStore, type ProjectFile } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -177,6 +178,8 @@ function EditorToolbar({
   onSave,
   onCopy,
   copied,
+  onPreview,
+  isPreviewable,
 }: {
   file: ProjectFile;
   isEditing: boolean;
@@ -186,6 +189,8 @@ function EditorToolbar({
   onSave: () => void;
   onCopy: () => void;
   copied: boolean;
+  onPreview: () => void;
+  isPreviewable: boolean;
 }) {
   const language = getLanguageFromFileName(file.name);
   const lineCount = file.content.split('\n').length;
@@ -259,6 +264,25 @@ function EditorToolbar({
             {isEditing ? 'View mode' : 'Edit mode'}
           </TooltipContent>
         </Tooltip>
+
+        {/* Preview button - only for HTML/CSS/JS files */}
+        {isPreviewable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-zinc-400 hover:text-emerald-400"
+                onClick={onPreview}
+              >
+                <Play className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Open in Preview
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {/* Right side info */}
@@ -307,7 +331,14 @@ function EmptyState() {
 // ---------------------------------------------------------------------------
 
 export default function CodeEditor() {
-  const { currentFile, setCurrentFile, updateFile, files } = useAppStore();
+  const {
+    currentFile,
+    setCurrentFile,
+    updateFile,
+    files,
+    setIsPreviewOpen,
+    setPreviewFiles,
+  } = useAppStore();
 
   // Local editing state
   const [editContent, setEditContent] = useState('');
@@ -354,6 +385,51 @@ export default function CodeEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentFile, isDirty, editContent]);
 
+  // ---- Check if current file is previewable (HTML/CSS/JS) ----
+
+  const isPreviewable = useCallback((fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+    return ['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx'].includes(ext);
+  }, []);
+
+  // ---- Handle opening preview with HTML/CSS/JS files from the project ----
+
+  const handleOpenPreview = useCallback(() => {
+    if (!currentFile) return;
+
+    // Find HTML, CSS, and JS files from the current project
+    const htmlFile = files.find(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return ['html', 'htm'].includes(ext) && !f.isFolder;
+    });
+    const cssFile = files.find(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return ['css', 'scss', 'less'].includes(ext) && !f.isFolder;
+    });
+    const jsFile = files.find(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return ['js', 'jsx', 'ts', 'tsx'].includes(ext) && !f.isFolder;
+    });
+
+    // Use current file content if it matches a type, otherwise use found files
+    const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
+    let html = htmlFile?.content ?? '';
+    let css = cssFile?.content ?? '';
+    let js = jsFile?.content ?? '';
+
+    // If the current file is one of these types, use its latest content
+    if (['html', 'htm'].includes(ext)) {
+      html = isDirty ? editContent : currentFile.content;
+    } else if (['css', 'scss', 'less'].includes(ext)) {
+      css = isDirty ? editContent : currentFile.content;
+    } else if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
+      js = isDirty ? editContent : currentFile.content;
+    }
+
+    setPreviewFiles({ html, css, js });
+    setIsPreviewOpen(true);
+  }, [currentFile, files, isDirty, editContent, setPreviewFiles, setIsPreviewOpen]);
+
   // ---- Handlers ----
 
   const handleSave = useCallback(async () => {
@@ -381,6 +457,18 @@ export default function CodeEditor() {
 
       setIsDirty(false);
 
+      // If preview is open and this is a previewable file, update preview
+      const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
+      if (['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx'].includes(ext)) {
+        const { isPreviewOpen, previewFiles, setPreviewFiles } = useAppStore.getState();
+        if (isPreviewOpen) {
+          const updatedHtml = ['html', 'htm'].includes(ext) ? editContent : previewFiles.html;
+          const updatedCss = ['css', 'scss', 'less'].includes(ext) ? editContent : previewFiles.css;
+          const updatedJs = ['js', 'jsx', 'ts', 'tsx'].includes(ext) ? editContent : previewFiles.js;
+          setPreviewFiles({ html: updatedHtml, css: updatedCss, js: updatedJs });
+        }
+      }
+
       toast({
         title: 'File saved',
         description: `${currentFile.name} saved successfully`,
@@ -398,12 +486,8 @@ export default function CodeEditor() {
   }, [currentFile, isDirty, editContent, updateFile]);
 
   const handleToggleEdit = useCallback(() => {
-    if (isEditing && isDirty) {
-      // Switching from edit to view with unsaved changes — prompt implicitly by saving
-      // Or just switch, letting user choose
-    }
     setIsEditing((prev) => !prev);
-  }, [isEditing, isDirty]);
+  }, []);
 
   const handleContentChange = useCallback(
     (value: string) => {
@@ -445,6 +529,7 @@ export default function CodeEditor() {
 
   const language = getLanguageFromFileName(currentFile.name);
   const displayContent = isEditing ? editContent : currentFile.content;
+  const canPreview = isPreviewable(currentFile.name);
 
   return (
     <div className="flex h-full flex-col bg-zinc-950">
@@ -467,6 +552,8 @@ export default function CodeEditor() {
         onSave={handleSave}
         onCopy={handleCopy}
         copied={copied}
+        onPreview={handleOpenPreview}
+        isPreviewable={canPreview}
       />
 
       {/* Code area — takes all remaining space */}
