@@ -438,15 +438,15 @@ function ModelSelector({
     );
   }, [models, searchQuery]);
 
-  // Group models: Free vs Paid (for OpenRouter), or by provider name
-  const groupedModels = provider === 'openrouter'
+  // Group models: Free vs Paid (for OpenRouter/OpenCode Zen), or by provider name
+  const groupedModels = (provider === 'openrouter' || provider === 'opencode')
     ? (() => {
         const auto = filteredModels.filter((m) => m.id === 'openrouter/auto');
         const free = filteredModels.filter((m) => m.isFree && m.id !== 'openrouter/auto');
         const paid = filteredModels.filter((m) => !m.isFree);
         const groups: Record<string, DynamicModel[]> = {};
         if (auto.length) groups['⚡ Auto-Routing'] = auto;
-        if (free.length) groups['🆓 Free Models'] = free;
+        if (free.length) groups[provider === 'opencode' ? '🆓 All Models FREE' : '🆓 Free Models'] = free;
         if (paid.length) groups['💎 Paid Models'] = paid;
         return groups;
       })()
