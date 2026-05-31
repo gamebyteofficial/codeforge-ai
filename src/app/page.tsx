@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, lazy, Suspense, useState, useCallback, useRef } from 'react';
+import { useEffect, lazy, Suspense, useState, useCallback, useRef, useMemo } from 'react';
 import ChatPanel from '@/components/codeforge/ChatPanel';
 import CodeEditor from '@/components/codeforge/CodeEditor';
 import FileExplorer from '@/components/codeforge/FileExplorer';
@@ -22,6 +22,7 @@ import {
   Eye,
   Wifi,
   HardDrive,
+  Keyboard,
 } from 'lucide-react';
 import { useAppStore, type SidebarTab } from '@/store';
 import { useUIState, useStore, useFileState, usePreviewState } from '@/store/hooks';
@@ -75,9 +76,12 @@ export default function Home() {
   const setSettings = useStore(s => s.setSettings);
   const setSelectedModel = useUIState(s => s.setSelectedModel);
   const selectedModel = useUIState(s => s.selectedModel);
-  const files = useFileState(s => s.files);
+  // Only subscribe to file count, not the entire files array
+  const fileCount = useFileState(s => s.files.length);
   const setIsSettingsOpen = useUIState(s => s.setIsSettingsOpen);
-  const storeSetSidebarTab = useUIState(s => s.setSidebarTab);
+
+  // --- Keyboard shortcut panel state ---
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // --- Connection latency tracking ---
   const [latencyStatus, setLatencyStatus] = useState<LatencyStatus>('good');
@@ -148,6 +152,16 @@ export default function Home() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
 
+      // Escape — Close shortcuts overlay first, then preview
+      if (e.key === 'Escape') {
+        if (showShortcuts) {
+          setShowShortcuts(false);
+          return;
+        }
+        const state = useAppStore.getState();
+        if (state.isPreviewOpen) state.setIsPreviewOpen(false);
+      }
+
       // Ctrl/Cmd + B — Toggle sidebar
       if (isMod && e.key === 'b') {
         e.preventDefault();
@@ -168,16 +182,16 @@ export default function Home() {
         state.setSidebarTab('files');
       }
 
-      // Escape — Close preview panel
-      if (e.key === 'Escape') {
-        const state = useAppStore.getState();
-        if (state.isPreviewOpen) state.setIsPreviewOpen(false);
+      // Ctrl/Cmd + K — Show keyboard shortcuts
+      if (isMod && e.key === 'k') {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setIsSidebarOpen, setIsBottomPanelOpen]);
+  }, [setIsSidebarOpen, setIsBottomPanelOpen, showShortcuts]);
 
   // --- Check if user has already completed onboarding ---
   useEffect(() => {
@@ -243,16 +257,12 @@ export default function Home() {
     ensureProject();
   }, [isOnboarded]);
 
-  // --- File count from store ---
-  const fileCount = files.length;
-
-  // --- Latency dot color ---
-  const latencyColor =
-    latencyStatus === 'good'
-      ? 'bg-emerald-500'
-      : latencyStatus === 'moderate'
-        ? 'bg-yellow-500'
-        : 'bg-red-500';
+  // --- Latency dot color (memoized) ---
+  const latencyColor = useMemo(() => {
+    if (latencyStatus === 'good') return 'bg-emerald-500';
+    if (latencyStatus === 'moderate') return 'bg-yellow-500';
+    return 'bg-red-500';
+  }, [latencyStatus]);
 
   // --- Show onboarding wizard if not onboarded ---
   if (!isOnboarded) {
@@ -480,7 +490,7 @@ export default function Home() {
           {selectedModel && (
             <>
               <div className="h-3 w-px bg-zinc-800" />
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-zinc-600 truncate max-w-[120px]">
                 {selectedModel}
               </span>
             </>
@@ -510,11 +520,67 @@ export default function Home() {
             </TooltipContent>
           </Tooltip>
 
+          {/* Keyboard shortcuts button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowShortcuts(!showShortcuts)}
+                className="flex items-center gap-1 text-[10px] text-zinc-600 transition-colors hover:text-zinc-300"
+              >
+                <Keyboard className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Keyboard shortcuts
+            </TooltipContent>
+          </Tooltip>
+
           <span className="text-[10px] text-zinc-600">
             Powered by Z.ai
           </span>
         </div>
       </footer>
+
+      {/* Keyboard Shortcuts Overlay */}
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="mx-4 max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center gap-2">
+              <Keyboard className="size-5 text-emerald-400" />
+              <h3 className="text-lg font-semibold text-zinc-100">Keyboard Shortcuts</h3>
+            </div>
+            <div className="space-y-2">
+              {[
+                { keys: '⌘/Ctrl + K', desc: 'Keyboard shortcuts' },
+                { keys: '⌘/Ctrl + B', desc: 'Toggle sidebar' },
+                { keys: '⌘/Ctrl + J', desc: 'Toggle terminal' },
+                { keys: '⌘/Ctrl + Shift + E', desc: 'Focus file explorer' },
+                { keys: '⌘/Ctrl + S', desc: 'Save current file' },
+                { keys: '⌘/Ctrl + Shift + P', desc: 'Open preview' },
+                { keys: 'Escape', desc: 'Close preview / this panel' },
+                { keys: 'Enter', desc: 'Send message' },
+                { keys: 'Shift + Enter', desc: 'New line in chat' },
+              ].map((shortcut) => (
+                <div key={shortcut.keys} className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-zinc-400">{shortcut.desc}</span>
+                  <kbd className="shrink-0 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-0.5 font-mono text-xs text-zinc-300">
+                    {shortcut.keys}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-center text-[11px] text-zinc-600">
+              Press <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px]">Escape</kbd> to close
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Settings Modal */}
       <SettingsModal />

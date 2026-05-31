@@ -509,17 +509,23 @@ export default function CodeEditor() {
   const codeAreaRef = useRef<HTMLDivElement>(null);
 
   // Sync local state when currentFile changes
+  // Use a ref to track previous file ID to avoid unnecessary resets
+  const prevFileIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (currentFile) {
-      setEditContent(currentFile.content);
-      setIsDirty(false);
-      setIsEditing(false);
-    } else {
-      setEditContent('');
-      setIsDirty(false);
-      setIsEditing(false);
+    const fileId = currentFile?.id ?? null;
+    if (fileId !== prevFileIdRef.current) {
+      prevFileIdRef.current = fileId;
+      if (currentFile) {
+        setEditContent(currentFile.content);
+        setIsDirty(false);
+        setIsEditing(false);
+      } else {
+        setEditContent('');
+        setIsDirty(false);
+        setIsEditing(false);
+      }
     }
-  }, [currentFile?.id]);
+  }, [currentFile]);
 
   // Focus textarea when entering edit mode
   useEffect(() => {
@@ -584,11 +590,12 @@ export default function CodeEditor() {
   }, [currentFile, isDirty, editContent, updateFile]);
 
   // ---- Check if current file is previewable (HTML/CSS/JS) ----
-
+  // Pre-computed set for O(1) lookup instead of Array.includes()
+  const PREVIEWABLE_EXTENSIONS = useMemo(() => new Set(['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx']), []);
   const isPreviewable = useCallback((fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-    return ['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx'].includes(ext);
-  }, []);
+    return PREVIEWABLE_EXTENSIONS.has(ext);
+  }, [PREVIEWABLE_EXTENSIONS]);
 
   // ---- Handle opening preview with HTML/CSS/JS files from the project ----
 
@@ -768,6 +775,12 @@ export default function CodeEditor() {
     setCurrentFile(null);
   }, [setCurrentFile]);
 
+  // ---- Compute derived values (must be before any conditional returns) ----
+
+  const language = useMemo(() => currentFile ? getLanguageFromFileName(currentFile.name) : '', [currentFile]);
+  const displayContent = currentFile ? (isEditing ? editContent : currentFile.content) : '';
+  const canPreview = currentFile ? isPreviewable(currentFile.name) : false;
+
   // ---- Render ----
 
   // No file open
@@ -782,10 +795,6 @@ export default function CodeEditor() {
       </div>
     );
   }
-
-  const language = getLanguageFromFileName(currentFile.name);
-  const displayContent = isEditing ? editContent : currentFile.content;
-  const canPreview = isPreviewable(currentFile.name);
 
   return (
     <div className="flex h-full flex-col bg-zinc-950">

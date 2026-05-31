@@ -23,6 +23,7 @@ import {
   Sparkles,
   Hash,
   ChevronDown,
+  ChevronUp,
   ArrowDown,
   ArrowUp,
   Wifi,
@@ -31,6 +32,8 @@ import {
   FilePlus2,
   FolderCheck,
   FileCheck2,
+  Square,
+  Activity,
 } from 'lucide-react';
 import { useAppStore, type AgentType, type ProjectFile } from '@/store';
 import { useStore, useChatState, useFileState, useUIState, useProjectState } from '@/store/hooks';
@@ -49,12 +52,26 @@ import {
 } from '@/components/ui/popover';
 
 // ---------------------------------------------------------------------------
-// Utility: Extract preview content from streaming text
+// Utility: Extract preview content from streaming text (optimized with cache)
 // ---------------------------------------------------------------------------
 
+// Cache for extractPreviewContent — avoids re-running regex when content hasn't changed
+const previewCache = {
+  lastInput: '',
+  lastResult: null as { html: string; css: string; js: string } | null,
+};
+
+// Quick check: does the text even contain code blocks?
+const CODE_BLOCK_INDICATOR = /```/;
+
 function extractPreviewContent(text: string): { html: string; css: string; js: string } | null {
-  // Match both complete (```...```) and incomplete (```... without closing) code blocks
-  // Also handle the 📄 **filepath** pattern that the system prompt instructs the AI to use
+  // Early exit: if text is short and contains no code block markers, skip entirely
+  if (text.length < 20 && !CODE_BLOCK_INDICATOR.test(text)) return null;
+
+  // Return cached result if input hasn't changed
+  if (text === previewCache.lastInput) {
+    return previewCache.lastResult;
+  }
 
   let html = '';
   let css = '';
@@ -90,9 +107,13 @@ function extractPreviewContent(text: string): { html: string; css: string; js: s
     js = jsMatch?.[1] || '';
   }
 
-  if (!html && !css && !js) return null;
+  const result = (!html && !css && !js) ? null : { html, css, js };
 
-  return { html, css, js };
+  // Update cache
+  previewCache.lastInput = text;
+  previewCache.lastResult = result;
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +170,12 @@ const SUGGESTED_PROMPTS = [
   { label: 'Plan a microservice architecture', icon: <BookOpen className="size-4" /> },
 ];
 
+// Maximum messages to render in the DOM at once (message windowing)
+const VISIBLE_MESSAGE_LIMIT = 50;
+
+// Throttle interval for preview updates during streaming
+const PREVIEW_THROTTLE_MS = 500;
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -177,7 +204,7 @@ function LoadingDots() {
 // CodeBlock – syntax‑highlighted code with copy & apply buttons
 // ---------------------------------------------------------------------------
 
-function CodeBlock({
+const CodeBlock = React.memo(function CodeBlock({
   language,
   code,
   onApply,
@@ -253,7 +280,7 @@ function CodeBlock({
       </SyntaxHighlighter>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // MarkdownRenderer – renders AI message content
@@ -645,10 +672,6 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
 }
 
 // ---------------------------------------------------------------------------
-// MessageBubble
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // FileCreateBar – Shows below AI messages that contain file blocks
 // ---------------------------------------------------------------------------
 
@@ -662,7 +685,7 @@ function FileCreateBar({
   const [isCreating, setIsCreating] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
-  const parsedFiles = parseFilesFromResponse(content);
+  const parsedFiles = useMemo(() => parseFilesFromResponse(content), [content]);
   const currentProject = useProjectState(s => s.currentProject);
   const addFile = useFileState(s => s.addFile);
   const setCurrentFile = useFileState(s => s.setCurrentFile);
@@ -872,9 +895,9 @@ const MessageBubble = React.memo(function MessageBubble({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
       className={`flex gap-3 px-4 py-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
     >
       {/* Avatar */}
@@ -936,15 +959,123 @@ const MessageBubble = React.memo(function MessageBubble({
 });
 
 // ---------------------------------------------------------------------------
-// MessageInput
+// StreamingMessage – the streaming message bubble with enhanced UX
+// ---------------------------------------------------------------------------
+
+const StreamingMessage = React.memo(function StreamingMessage({
+  content,
+  model,
+  onApplyCode,
+}: {
+  content: string;
+  model: string;
+  onApplyCode?: (code: string) => void;
+}) {
+  // Approximate token count (1 token ≈ 4 chars)
+  const tokenCount = useMemo(() => Math.ceil(content.length / 4), [content.length]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="flex gap-3 px-4 py-3"
+    >
+      {/* Avatar with pulse ring */}
+      <div className="relative">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+          <Bot className="size-4" />
+        </div>
+        {/* Animated pulse ring around avatar */}
+        <motion.div
+          className="absolute inset-0 rounded-lg border border-emerald-400/40"
+          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0, 0.5] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-emerald-400/80">
+            CodeForge AI
+            {model && (
+              <span className="ml-1.5 text-zinc-600 font-normal">
+                via {model}
+              </span>
+            )}
+          </span>
+          {/* Streaming status badge */}
+          <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+            <Activity className="size-2.5" />
+            Streaming
+            <span className="text-emerald-400/60">·</span>
+            {tokenCount.toLocaleString()} tokens
+          </span>
+        </div>
+        <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300 relative">
+          <MarkdownRenderer content={content} onApplyCode={onApplyCode} />
+          {/* Blinking cursor */}
+          <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// TypingIndicator – shown while waiting for streaming to start
+// ---------------------------------------------------------------------------
+
+function TypingIndicator({ modelName }: { modelName: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex gap-3 px-4 py-3"
+    >
+      <div className="relative">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+          <Bot className="size-4" />
+        </div>
+        <motion.div
+          className="absolute inset-0 rounded-lg border border-emerald-400/40"
+          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0, 0.5] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] font-medium text-emerald-400/80">
+          CodeForge AI
+          {modelName && (
+            <span className="ml-1.5 text-zinc-600 font-normal">
+              via {modelName}
+            </span>
+          )}
+        </span>
+        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-3 text-sm text-zinc-400">
+          <Loader2 className="size-3.5 animate-spin text-emerald-500" />
+          <span>Calling {modelName || 'AI'}...</span>
+          <LoadingDots />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MessageInput – with Stop button during streaming
 // ---------------------------------------------------------------------------
 
 function MessageInput({
   onSend,
   isLoading,
+  onStop,
 }: {
   onSend: (message: string) => void;
   isLoading: boolean;
+  onStop: () => void;
 }) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1015,18 +1146,54 @@ function MessageInput({
           />
         </div>
 
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!input.trim() || isLoading}
-          className="size-9 shrink-0 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40"
-        >
+        {/* Stop button appears during streaming, replaces send button */}
+        <AnimatePresence mode="wait">
           {isLoading ? (
-            <Loader2 className="size-4 animate-spin" />
+            <motion.div
+              key="stop"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    onClick={onStop}
+                    className="size-9 shrink-0 rounded-xl bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-900/30"
+                  >
+                    <Square className="size-4 fill-current" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Stop generating</TooltipContent>
+              </Tooltip>
+            </motion.div>
           ) : (
-            <Send className="size-4" />
+            <motion.div
+              key="send"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!input.trim()}
+                    className="size-9 shrink-0 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40"
+                  >
+                    <Send className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Send message</TooltipContent>
+              </Tooltip>
+            </motion.div>
           )}
-        </Button>
+        </AnimatePresence>
       </form>
 
       <div className="mt-1.5 flex items-center justify-between">
@@ -1070,6 +1237,13 @@ export default function ChatPanel() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
+  // Message windowing: track how many earlier messages are "expanded"
+  const [visibleMessageLimit, setVisibleMessageLimit] = useState(VISIBLE_MESSAGE_LIMIT);
+
+  // Throttle refs for preview updates
+  const lastPreviewUpdateRef = useRef(0);
+  const pendingPreviewContentRef = useRef<string>('');
+
   // Check scroll position to show/hide scroll buttons
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1086,7 +1260,7 @@ export default function ChatPanel() {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Scroll to bottom
+  // Scroll to bottom with smooth animation
   const scrollToBottom = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current?.scrollHeight || 0, behavior: 'smooth' });
   }, []);
@@ -1103,6 +1277,11 @@ export default function ChatPanel() {
     }
   }, [currentConversation?.messages.length, streamingContent, isChatLoading]);
 
+  // Reset visible limit when conversation changes
+  useEffect(() => {
+    setVisibleMessageLimit(VISIBLE_MESSAGE_LIMIT);
+  }, [currentConversation?.id]);
+
   const handleApplyCode = useCallback(
     (code: string) => {
       if (currentFile) {
@@ -1115,11 +1294,47 @@ export default function ChatPanel() {
   const handleFilesCreated = useCallback(
     (files: ProjectFile[]) => {
       // Files are already added to the store by FileCreateBar
-      // This callback can be used for additional side effects
       console.log(`[ChatPanel] ${files.length} files created from AI response`);
     },
     [],
   );
+
+  // Stop generating handler
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
+  // Throttled preview update function
+  const throttledPreviewUpdate = useCallback((content: string) => {
+    const now = Date.now();
+    if (now - lastPreviewUpdateRef.current >= PREVIEW_THROTTLE_MS) {
+      lastPreviewUpdateRef.current = now;
+      const previewContent = extractPreviewContent(content);
+      if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+        const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+        setPreviewFiles(previewContent);
+        setIsPreviewOpen(true);
+      }
+    } else {
+      // Store the latest content for the next throttle window
+      pendingPreviewContentRef.current = content;
+    }
+  }, []);
+
+  // Flush any pending preview update
+  const flushPreviewUpdate = useCallback((content: string) => {
+    const previewContent = extractPreviewContent(content);
+    if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+      const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+      setPreviewFiles(previewContent);
+      setIsPreviewOpen(true);
+    }
+    lastPreviewUpdateRef.current = Date.now();
+    pendingPreviewContentRef.current = '';
+  }, []);
 
   const handleSend = useCallback(
     async (message: string) => {
@@ -1151,6 +1366,8 @@ export default function ChatPanel() {
       streamingContentRef.current = '';
       setStreamingContent('');
       setStreamingModel('');
+      lastPreviewUpdateRef.current = 0;
+      pendingPreviewContentRef.current = '';
 
       try {
         const conversationId = currentConversation?.id ?? userMessage.id;
@@ -1192,8 +1409,6 @@ export default function ChatPanel() {
           const decoder = new TextDecoder();
           let fullContent = '';
           let lastModel = selectedModel;
-          const PREVIEW_THROTTLE_MS = 300;
-          const lastPreviewUpdateRef = { current: 0 };
 
           while (true) {
             const { done, value } = await reader.read();
@@ -1219,17 +1434,8 @@ export default function ChatPanel() {
                     setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
 
-                    // Throttled preview update during streaming (max once per 300ms)
-                    const now = Date.now();
-                    if (now - lastPreviewUpdateRef.current >= PREVIEW_THROTTLE_MS) {
-                      lastPreviewUpdateRef.current = now;
-                      const previewContent = extractPreviewContent(fullContent);
-                      if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
-                        const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
-                        setPreviewFiles(previewContent);
-                        setIsPreviewOpen(true);
-                      }
-                    }
+                    // Throttled preview update during streaming
+                    throttledPreviewUpdate(fullContent);
                   }
                   if (parsed.model) {
                     lastModel = parsed.model;
@@ -1243,12 +1449,7 @@ export default function ChatPanel() {
           }
 
           // Final preview extraction after streaming completes
-          const finalPreviewContent = extractPreviewContent(fullContent);
-          if (finalPreviewContent && (finalPreviewContent.html || finalPreviewContent.css || finalPreviewContent.js)) {
-            const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
-            setPreviewFiles(finalPreviewContent);
-            setIsPreviewOpen(true);
-          }
+          flushPreviewUpdate(fullContent);
 
           // Finalize the streaming message
           const assistantMessage = {
@@ -1296,6 +1497,7 @@ export default function ChatPanel() {
             };
             addMessageToConversation(assistantMessage);
           }
+          toast.info('Generation stopped', { duration: 2000 });
         } else {
           const errStr = (error as Error)?.message || String(error);
           const isModelError = errStr.toLowerCase().includes('no endpoints') ||
@@ -1315,17 +1517,11 @@ export default function ChatPanel() {
           console.error('Chat API error:', error);
         }
       } finally {
-        // Capture final content before clearing
-        const finalContentForDetection = streamingContentRef.current;
-
         setIsChatLoading(false);
         setStreamingContent('');
         setStreamingModel('');
         streamingContentRef.current = '';
         abortControllerRef.current = null;
-
-        // Files are now auto-created by FileCreateBar component
-        // No need for toast here — FileCreateBar handles it
       }
     },
     [
@@ -1336,6 +1532,8 @@ export default function ChatPanel() {
       setCurrentConversation,
       selectedAgent,
       selectedModel,
+      throttledPreviewUpdate,
+      flushPreviewUpdate,
     ],
   );
 
@@ -1347,8 +1545,30 @@ export default function ChatPanel() {
   );
 
   const messages = currentConversation?.messages ?? [];
-  // Memoize historical messages so only the streaming message re-renders
-  const historicalMessages = useMemo(() => messages, [messages.length, messages.map(m => m.id).join(',')]);
+
+  // Message windowing: only render a slice of messages
+  const hasMoreMessages = messages.length > visibleMessageLimit;
+  const visibleMessages = useMemo(() => {
+    if (messages.length <= visibleMessageLimit) return messages;
+    return messages.slice(messages.length - visibleMessageLimit);
+  }, [messages, visibleMessageLimit]);
+
+  // Memoize the rendered message bubbles
+  const renderedMessages = useMemo(
+    () =>
+      visibleMessages.map((msg) => (
+        <MessageBubble
+          key={msg.id}
+          role={msg.role}
+          content={msg.content}
+          model={msg.model}
+          onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
+          onFilesCreated={msg.role === 'assistant' ? handleFilesCreated : undefined}
+        />
+      )),
+    [visibleMessages, handleApplyCode, handleFilesCreated],
+  );
+
   const isEmpty = messages.length === 0 && !isChatLoading;
 
   return (
@@ -1368,74 +1588,53 @@ export default function ChatPanel() {
             className="h-full overflow-y-auto chat-scroll-area"
           >
             <div ref={scrollRef} className="py-2">
-              <AnimatePresence initial={false}>
-                {historicalMessages.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    model={msg.model}
-                    onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
-                    onFilesCreated={msg.role === 'assistant' ? handleFilesCreated : undefined}
-                  />
-                ))}
-              </AnimatePresence>
-
-              {/* Streaming content - show in real-time */}
+              {/* Load earlier messages button */}
               <AnimatePresence>
-                {isChatLoading && streamingContent && (
+                {hasMoreMessages && (
                   <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex gap-3 px-4 py-3"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="flex justify-center px-4 py-2"
                   >
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                      <Bot className="size-4" />
-                    </div>
-                    <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
-                      <span className="text-[11px] font-medium text-emerald-400/80">
-                        CodeForge AI
-                        {streamingModel && (
-                          <span className="ml-1.5 text-zinc-600 font-normal">
-                            via {streamingModel}
-                          </span>
-                        )}
-                      </span>
-                      <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300">
-                        <MarkdownRenderer content={streamingContent} onApplyCode={handleApplyCode} />
-                        <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
-                      </div>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => setVisibleMessageLimit((prev) => prev + VISIBLE_MESSAGE_LIMIT)}
+                          className="flex items-center gap-1.5 rounded-full border border-zinc-700/60 bg-zinc-800/60 px-3 py-1.5 text-xs text-zinc-400 transition-all hover:border-emerald-500/30 hover:bg-zinc-800 hover:text-emerald-400"
+                        >
+                          <ChevronUp className="size-3.5" />
+                          Load earlier messages ({messages.length - visibleMessageLimit} hidden)
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        Show {Math.min(VISIBLE_MESSAGE_LIMIT, messages.length - visibleMessageLimit)} more messages
+                      </TooltipContent>
+                    </Tooltip>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Loading indicator (before streaming starts) */}
+              {/* Historical messages */}
+              <AnimatePresence initial={false}>
+                {renderedMessages}
+              </AnimatePresence>
+
+              {/* Streaming content - show in real-time with enhanced UX */}
+              <AnimatePresence>
+                {isChatLoading && streamingContent && (
+                  <StreamingMessage
+                    content={streamingContent}
+                    model={streamingModel}
+                    onApplyCode={handleApplyCode}
+                  />
+                )}
+              </AnimatePresence>
+
+              {/* Typing indicator (before streaming starts) */}
               <AnimatePresence>
                 {isChatLoading && !streamingContent && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex gap-3 px-4 py-3"
-                  >
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                      <Bot className="size-4" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-emerald-400/80">
-                        CodeForge AI
-                      </span>
-                      <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-3 text-sm text-zinc-400">
-                        <Loader2 className="size-3.5 animate-spin text-emerald-500" />
-                        <span>Calling {selectedModel}...</span>
-                        <LoadingDots />
-                      </div>
-                    </div>
-                  </motion.div>
+                  <TypingIndicator modelName={selectedModel} />
                 )}
               </AnimatePresence>
 
@@ -1477,8 +1676,8 @@ export default function ChatPanel() {
         </div>
       )}
 
-      {/* Input area */}
-      <MessageInput onSend={handleSend} isLoading={isChatLoading} />
+      {/* Input area with Stop button support */}
+      <MessageInput onSend={handleSend} isLoading={isChatLoading} onStop={handleStop} />
     </div>
   );
 }

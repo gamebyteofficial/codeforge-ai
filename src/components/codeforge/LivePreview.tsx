@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { usePreviewState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +8,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Monitor,
   Tablet,
@@ -19,16 +25,103 @@ import {
   Code2,
   ExternalLink,
   Loader2,
+  Terminal,
+  ChevronDown,
+  ChevronRight,
+  AlertCircle,
+  Info,
+  AlertTriangle,
+  Trash2,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type DeviceSize = 'desktop' | 'tablet' | 'mobile';
+
+type ConsoleLevel = 'log' | 'warn' | 'error' | 'info';
+
+interface ConsoleEntry {
+  id: number;
+  level: ConsoleLevel;
+  args: string[];
+  timestamp: number;
+}
 
 const DEVICE_CONFIG: Record<DeviceSize, { width: string; maxWidth: string; label: string }> = {
   desktop: { width: '100%', maxWidth: '100%', label: 'Desktop' },
   tablet: { width: '768px', maxWidth: '768px', label: 'Tablet' },
   mobile: { width: '375px', maxWidth: '375px', label: 'Mobile' },
 };
+
+// ---------------------------------------------------------------------------
+// Simple but effective content hash (djb2 variant)
+// ---------------------------------------------------------------------------
+
+function contentHash(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0xffffffff;
+  }
+  return hash;
+}
+
+function computePreviewHash(html: string, css: string, js: string): string {
+  return `${contentHash(html)}:${contentHash(css)}:${contentHash(js)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Console capture script injected into the iframe
+// ---------------------------------------------------------------------------
+
+const CONSOLE_CAPTURE_SCRIPT = `
+<script>
+(function() {
+  var _id = 0;
+  function send(level, args) {
+    try {
+      var strs = [];
+      for (var i = 0; i < args.length; i++) {
+        try {
+          var a = args[i];
+          if (a === null) strs.push('null');
+          else if (a === undefined) strs.push('undefined');
+          else if (typeof a === 'object') {
+            try { strs.push(JSON.stringify(a, null, 2)); }
+            catch(e) { strs.push(String(a)); }
+          }
+          else strs.push(String(a));
+        } catch(e) { strs.push('[unknown]'); }
+      }
+      window.parent.postMessage({
+        type: '__preview_console',
+        level: level,
+        args: strs,
+        id: ++_id,
+        ts: Date.now()
+      }, '*');
+    } catch(e) {}
+  }
+  var origLog = console.log;
+  var origWarn = console.warn;
+  var origError = console.error;
+  var origInfo = console.info;
+  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
+  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
+  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
+  console.info = function() { send('info', arguments); origInfo.apply(console, arguments); };
+  window.onerror = function(msg, src, line, col, err) {
+    send('error', [msg + ' (line ' + line + ':' + col + ')']);
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function(e) {
+    send('error', ['Unhandled Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason))]);
+  });
+})();
+<\/script>
+`;
 
 // ---------------------------------------------------------------------------
 // Error Boundary for iframe
@@ -44,7 +137,7 @@ type ErrorBoundaryState = {
   error: Error | null;
 };
 
-class PreviewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class PreviewErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -88,6 +181,36 @@ class PreviewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 }
 
 // ---------------------------------------------------------------------------
+// Console entry renderer
+// ---------------------------------------------------------------------------
+
+const LEVEL_CONFIG: Record<ConsoleLevel, { icon: typeof Info; color: string; bg: string; border: string }> = {
+  log: { icon: Info, color: 'text-zinc-400', bg: 'bg-zinc-800/60', border: 'border-zinc-700/40' },
+  info: { icon: Info, color: 'text-blue-400', bg: 'bg-blue-500/5', border: 'border-blue-500/20' },
+  warn: { icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/5', border: 'border-amber-500/20' },
+  error: { icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/5', border: 'border-red-500/20' },
+};
+
+// ---------------------------------------------------------------------------
+// Loading skeleton
+// ---------------------------------------------------------------------------
+
+function PreviewSkeleton() {
+  return (
+    <div className="flex h-full flex-col gap-3 p-6 animate-pulse">
+      <div className="h-6 w-3/4 rounded bg-zinc-800/60" />
+      <div className="h-4 w-1/2 rounded bg-zinc-800/40" />
+      <div className="mt-4 flex flex-col gap-2">
+        <div className="h-3 w-full rounded bg-zinc-800/30" />
+        <div className="h-3 w-5/6 rounded bg-zinc-800/30" />
+        <div className="h-3 w-4/6 rounded bg-zinc-800/30" />
+      </div>
+      <div className="mt-6 h-24 w-full rounded-lg bg-zinc-800/20" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // LivePreview component
 // ---------------------------------------------------------------------------
 
@@ -101,10 +224,25 @@ export default function LivePreview() {
   const [iframeKey, setIframeKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([]);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+  const [consoleCount, setConsoleCount] = useState(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastContentHashRef = useRef<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const consoleIdRef = useRef(0);
+  const consoleEndRef = useRef<HTMLDivElement>(null);
 
+  // Extract title from HTML for URL bar
+  const previewTitle = useMemo(() => {
+    if (!previewFiles.html) return '';
+    const match = previewFiles.html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    return match ? match[1].trim() : '';
+  }, [previewFiles.html]);
+
+  const isEmpty = !previewFiles.html && !previewFiles.css && !previewFiles.js;
+
+  // Build srcdoc with console capture injected
   const buildSrcdoc = useCallback((html: string, css: string, js: string) => {
     return `<!DOCTYPE html>
 <html>
@@ -116,6 +254,7 @@ export default function LivePreview() {
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     ${css}
   </style>
+  ${CONSOLE_CAPTURE_SCRIPT}
 </head>
 <body>
   ${html}
@@ -130,7 +269,34 @@ export default function LivePreview() {
 </html>`;
   }, []);
 
-  const isEmpty = !previewFiles.html && !previewFiles.css && !previewFiles.js;
+  // Listen for console messages from iframe
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data && e.data.type === '__preview_console') {
+        const entry: ConsoleEntry = {
+          id: ++consoleIdRef.current,
+          level: e.data.level as ConsoleLevel,
+          args: e.data.args || [],
+          timestamp: e.data.ts || Date.now(),
+        };
+        setConsoleEntries(prev => {
+          const next = [...prev, entry];
+          // Keep max 200 entries
+          return next.length > 200 ? next.slice(-200) : next;
+        });
+        setConsoleCount(prev => prev + 1);
+      }
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Auto-scroll console
+  useEffect(() => {
+    if (isConsoleOpen && consoleEndRef.current) {
+      consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [consoleEntries, isConsoleOpen]);
 
   // Debounced auto-refresh when code changes — 300ms with content hash comparison
   useEffect(() => {
@@ -140,14 +306,14 @@ export default function LivePreview() {
 
     debounceRef.current = setTimeout(() => {
       if (!isEmpty) {
-        const contentHash = `${previewFiles.html.length}:${previewFiles.css.length}:${previewFiles.js.length}`;
-        if (contentHash !== lastContentHashRef.current) {
-          lastContentHashRef.current = contentHash;
+        const hash = computePreviewHash(previewFiles.html, previewFiles.css, previewFiles.js);
+        if (hash !== lastContentHashRef.current) {
+          lastContentHashRef.current = hash;
           setIsTransitioning(true);
           setIsLoading(true);
           setSrcdoc(buildSrcdoc(previewFiles.html, previewFiles.css, previewFiles.js));
           // Fade out transition overlay after a short delay
-          setTimeout(() => setIsTransitioning(false), 150);
+          setTimeout(() => setIsTransitioning(false), 200);
         }
       }
     }, 300);
@@ -164,25 +330,50 @@ export default function LivePreview() {
     setIsRefreshing(true);
     setIsLoading(true);
     lastContentHashRef.current = '';
+    setConsoleEntries([]);
+    setConsoleCount(0);
     setSrcdoc(buildSrcdoc(previewFiles.html, previewFiles.css, previewFiles.js));
     setIframeKey((k) => k + 1);
     setTimeout(() => setIsRefreshing(false), 600);
   }, [previewFiles, buildSrcdoc]);
 
-  // Pop out — open preview in a new browser tab using a data URI
+  // Pop out — open preview in a new browser tab using a blob URL
   const handlePopOut = useCallback(() => {
     if (!srcdoc) return;
-    const blob = new Blob([srcdoc], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    // Revoke after a short delay so the new tab can load it
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    try {
+      const blob = new Blob([srcdoc], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const newWin = window.open(url, '_blank');
+      // If popup blocked, try data URI fallback
+      if (!newWin) {
+        const dataUri = `data:text/html;charset=utf-8,${encodeURIComponent(srcdoc)}`;
+        window.open(dataUri, '_blank');
+      }
+      // Revoke after a short delay so the new tab can load it
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch {
+      // Final fallback: data URI
+      const dataUri = `data:text/html;charset=utf-8,${encodeURIComponent(srcdoc)}`;
+      window.open(dataUri, '_blank');
+    }
   }, [srcdoc]);
 
   // Handle iframe load event
   const handleIframeLoad = useCallback(() => {
     setIsLoading(false);
   }, []);
+
+  // Clear console
+  const handleClearConsole = useCallback(() => {
+    setConsoleEntries([]);
+    setConsoleCount(0);
+  }, []);
+
+  // Error count for badge
+  const errorCount = useMemo(
+    () => consoleEntries.filter(e => e.level === 'error').length,
+    [consoleEntries]
+  );
 
   if (!isPreviewOpen) return null;
 
@@ -198,7 +389,13 @@ export default function LivePreview() {
           <span className="text-xs font-medium text-zinc-300 shrink-0">Preview</span>
           <div className="flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-800/60 px-2 py-0.5 min-w-0 max-w-[200px]">
             <Globe className="size-3 text-zinc-500 shrink-0" />
-            <span className="truncate text-[11px] text-zinc-500">preview://localhost</span>
+            <span className="truncate text-[11px] text-zinc-500">
+              {isEmpty
+                ? 'preview://about:blank'
+                : previewTitle
+                  ? `preview://${previewTitle.replace(/\s+/g, '-').toLowerCase()}.html`
+                  : 'preview://index.html'}
+            </span>
           </div>
         </div>
 
@@ -290,93 +487,207 @@ export default function LivePreview() {
       </div>
 
       {/* Preview content area */}
-      <div className="flex-1 min-h-0 overflow-auto bg-zinc-900/30">
-        {isEmpty ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="flex flex-col items-center gap-4 text-zinc-600">
-              {/* Animated monitor icon */}
+      <div className="flex-1 min-h-0 overflow-hidden bg-zinc-900/30 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <AnimatePresence mode="wait">
+            {isEmpty ? (
               <motion.div
-                className="relative"
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                key="empty"
+                className="flex h-full items-center justify-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="flex flex-col items-center gap-4 text-zinc-600">
+                  {/* Animated monitor icon */}
+                  <motion.div
+                    className="relative"
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                  >
+                    <div
+                      className="size-20 rounded-xl opacity-15"
+                      style={{
+                        backgroundImage:
+                          'linear-gradient(45deg, #3f3f46 25%, transparent 25%), linear-gradient(-45deg, #3f3f46 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3f3f46 75%), linear-gradient(-45deg, transparent 75%, #3f3f46 75%)',
+                        backgroundSize: '12px 12px',
+                        backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
+                      }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex size-12 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                        <Monitor className="size-6 text-emerald-400/60" />
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  <div className="flex flex-col items-center gap-2">
+                    <p className="text-sm font-medium text-zinc-400">Ask AI to build something</p>
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-600">
+                      <Sparkles className="size-3 text-emerald-500/50" />
+                      <span>Try:</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      <span className="text-[11px] text-zinc-500 font-mono">&quot;Build me a landing page&quot;</span>
+                      <span className="text-[11px] text-zinc-500 font-mono">&quot;Create a todo app&quot;</span>
+                      <span className="text-[11px] text-zinc-500 font-mono">&quot;Make a calculator&quot;</span>
+                    </div>
+                  </div>
+
+                  <motion.div
+                    className="flex items-center gap-1.5 mt-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1"
+                    animate={{ borderColor: ['rgba(16,185,129,0.1)', 'rgba(16,185,129,0.3)', 'rgba(16,185,129,0.1)'] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  >
+                    <Code2 className="size-3 text-emerald-500/50" />
+                    <span className="text-[10px] text-zinc-500">Preview updates as you code</span>
+                  </motion.div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="preview"
+                className="flex h-full justify-center p-2"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
               >
                 <div
-                  className="size-20 rounded-xl opacity-15"
+                  className="relative h-full rounded-lg border border-zinc-700/50 bg-white shadow-lg overflow-hidden"
                   style={{
-                    backgroundImage:
-                      'linear-gradient(45deg, #3f3f46 25%, transparent 25%), linear-gradient(-45deg, #3f3f46 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3f3f46 75%), linear-gradient(-45deg, transparent 75%, #3f3f46 75%)',
-                    backgroundSize: '12px 12px',
-                    backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
+                    width: deviceConfig.width,
+                    maxWidth: deviceConfig.maxWidth,
+                    transition: 'width 0.35s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="flex size-12 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                    <Monitor className="size-6 text-emerald-400/60" />
-                  </div>
-                </div>
-              </motion.div>
-
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-sm font-medium text-zinc-400">Ask AI to build something</p>
-                <div className="flex items-center gap-1.5 text-xs text-zinc-600">
-                  <Sparkles className="size-3 text-emerald-500/50" />
-                  <span>Try:</span>
-                </div>
-                <div className="flex flex-col items-center gap-1 mt-1">
-                  <span className="text-[11px] text-zinc-500 font-mono">&quot;Build me a landing page&quot;</span>
-                  <span className="text-[11px] text-zinc-500 font-mono">&quot;Create a todo app&quot;</span>
-                  <span className="text-[11px] text-zinc-500 font-mono">&quot;Make a calculator&quot;</span>
-                </div>
-              </div>
-
-              <motion.div
-                className="flex items-center gap-1.5 mt-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1"
-                animate={{ borderColor: ['rgba(16,185,129,0.1)', 'rgba(16,185,129,0.3)', 'rgba(16,185,129,0.1)'] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <Code2 className="size-3 text-emerald-500/50" />
-                <span className="text-[10px] text-zinc-500">Preview updates as you code</span>
-              </motion.div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-full justify-center p-2">
-            <div
-              className="relative h-full rounded-lg border border-zinc-700/50 bg-white shadow-lg transition-all duration-300 ease-in-out overflow-hidden"
-              style={{
-                width: deviceConfig.width,
-                maxWidth: deviceConfig.maxWidth,
-              }}
-            >
-              {/* Loading indicator overlay */}
-              {isLoading && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/60 backdrop-blur-sm">
-                  <div className="flex items-center gap-2 rounded-lg bg-zinc-800/90 px-3 py-2 ring-1 ring-zinc-700/50">
-                    <Loader2 className="size-4 animate-spin text-emerald-400" />
-                    <span className="text-xs font-medium text-zinc-300">Rendering...</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Smooth opacity transition on content change */}
-              <PreviewErrorBoundary>
-                <div
-                  className="h-full transition-opacity duration-200 ease-in-out"
-                  style={{ opacity: isTransitioning ? 0.7 : 1 }}
                 >
-                  <iframe
-                    ref={iframeRef}
-                    key={iframeKey}
-                    srcDoc={srcdoc}
-                    sandbox="allow-scripts allow-modals allow-same-origin"
-                    title="Live Preview"
-                    className="h-full w-full border-0"
-                    onLoad={handleIframeLoad}
-                  />
+                  {/* Loading indicator overlay */}
+                  <AnimatePresence>
+                    {isLoading && (
+                      <motion.div
+                        className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/60 backdrop-blur-sm"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <div className="flex items-center gap-2 rounded-lg bg-zinc-800/90 px-3 py-2 ring-1 ring-zinc-700/50">
+                          <Loader2 className="size-4 animate-spin text-emerald-400" />
+                          <span className="text-xs font-medium text-zinc-300">Rendering...</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Content fade transition */}
+                  <PreviewErrorBoundary>
+                    <div
+                      className="h-full transition-all duration-300 ease-out"
+                      style={{
+                        opacity: isTransitioning ? 0.6 : 1,
+                        filter: isTransitioning ? 'blur(1px)' : 'blur(0px)',
+                      }}
+                    >
+                      <iframe
+                        ref={iframeRef}
+                        key={iframeKey}
+                        srcDoc={srcdoc}
+                        sandbox="allow-scripts allow-modals allow-same-origin"
+                        title="Live Preview"
+                        className="h-full w-full border-0"
+                        onLoad={handleIframeLoad}
+                      />
+                    </div>
+                  </PreviewErrorBoundary>
                 </div>
-              </PreviewErrorBoundary>
-            </div>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Console Panel */}
+        {!isEmpty && (
+          <Collapsible
+            open={isConsoleOpen}
+            onOpenChange={setIsConsoleOpen}
+            className="shrink-0 border-t border-zinc-800"
+          >
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center gap-2 bg-zinc-900/80 px-2 py-1 hover:bg-zinc-800/80 transition-colors">
+                {isConsoleOpen ? (
+                  <ChevronDown className="size-3 text-zinc-500" />
+                ) : (
+                  <ChevronRight className="size-3 text-zinc-500" />
+                )}
+                <Terminal className="size-3 text-zinc-500" />
+                <span className="text-[11px] font-medium text-zinc-400">Console</span>
+                {consoleCount > 0 && (
+                  <span className="flex items-center gap-1 ml-auto">
+                    <span className="inline-flex items-center rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+                      {consoleCount}
+                    </span>
+                    {errorCount > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-400 ring-1 ring-red-500/20">
+                        {errorCount}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="bg-zinc-950 border-t border-zinc-800/50">
+                {/* Console header */}
+                <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800/40">
+                  <span className="text-[10px] text-zinc-600">
+                    {consoleCount > 0 ? `${consoleCount} message${consoleCount !== 1 ? 's' : ''}` : 'No output'}
+                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleClearConsole}
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+                      >
+                        <Trash2 className="size-2.5" />
+                        Clear
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      Clear console
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                {/* Console entries */}
+                <ScrollArea className="max-h-36">
+                  <div className="px-2 py-1 font-mono text-[11px]">
+                    {consoleEntries.length === 0 ? (
+                      <div className="py-3 text-center text-zinc-600 text-[10px]">
+                        Console output will appear here
+                      </div>
+                    ) : (
+                      consoleEntries.map(entry => {
+                        const cfg = LEVEL_CONFIG[entry.level];
+                        const Icon = cfg.icon;
+                        return (
+                          <div
+                            key={entry.id}
+                            className={`flex items-start gap-1.5 rounded-sm px-1.5 py-0.5 ${cfg.bg} border ${cfg.border} mb-0.5`}
+                          >
+                            <Icon className={`size-3 mt-0.5 shrink-0 ${cfg.color}`} />
+                            <span className={`break-all ${cfg.color}`}>
+                              {entry.args.join(' ')}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div ref={consoleEndRef} />
+                  </div>
+                </ScrollArea>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
     </div>

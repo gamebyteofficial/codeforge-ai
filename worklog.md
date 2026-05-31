@@ -260,3 +260,112 @@ Stage Summary:
 - Preloading on hover ensures instant tab switching
 - Status bar now shows file count, latency, and memory
 - Global keyboard shortcuts for power users
+
+---
+Task ID: 1
+Agent: LivePreview Optimizer
+Task: Optimize LivePreview component
+
+Work Log:
+- Fixed critical bug: `PreviewErrorBoundary` class used bare `Component` without importing it — changed to `React.Component` by adding `React` to the import statement
+- Replaced `NodeJS.Timeout` type with `ReturnType<typeof setTimeout>` for browser compatibility
+- Improved content hashing from naive string-length comparison (`html.length:css.length:js.length`) to a djb2 hash-based comparison (`contentHash(html):contentHash(css):contentHash(js)`) that detects actual content changes
+- Added iframe console capture: injected a script into the iframe srcdoc that overrides `console.log/warn/error/info` and `window.onerror` / `unhandledrejection`, sending messages to the parent via `postMessage`
+- Added collapsible console panel at the bottom of the preview using shadcn/ui `Collapsible` and `ScrollArea` components
+  - Shows entry count and error count badges on the collapsed trigger
+  - Each entry rendered with level-appropriate icon (Info/AlertTriangle/AlertCircle), color, and background
+  - Clear console button with tooltip
+  - Auto-scrolls to latest entry
+  - Capped at 200 entries to prevent memory issues
+- Added URL bar that dynamically shows `preview://<title>.html` (extracted from HTML `<title>` tag), `preview://index.html` (default), or `preview://about:blank` (empty state)
+- Improved transitions: replaced simple opacity transition with a combined opacity + blur filter transition using `cubic-bezier(0.4, 0, 0.2, 1)` easing
+- Added `AnimatePresence` for smooth mount/unmount transitions between empty and preview states
+- Replaced static loading overlay with `AnimatePresence` + `motion.div` for smooth enter/exit animations
+- Added device frame width transition (smooth resize when switching desktop/tablet/mobile)
+- Improved pop-out feature with fallback chain: Blob URL → data URI → data URI on exception
+- Added `PreviewSkeleton` component for loading state (unused for now but ready for future use)
+- Console panel auto-opens when errors are present, with clear button and entry count
+- Lint passes cleanly, dev server compiles successfully
+
+Stage Summary:
+- Critical Component import bug fixed
+- NodeJS.Timeout replaced with browser-compatible type
+- Content hash now detects actual content changes instead of just length differences
+- Full iframe console capture with collapsible panel showing log/warn/error/info messages
+- URL bar shows dynamic preview title
+- Smoother transitions with opacity + blur + AnimatePresence
+- More reliable pop-out with Blob URL and data URI fallback
+- All new interactive elements have tooltips per style guidelines
+
+---
+Task ID: 2
+Agent: ChatPanel Optimizer
+Task: Optimize ChatPanel component
+
+Work Log:
+- Added Stop Generating button: red/orange Square icon button that appears during streaming via AnimatePresence, replacing the Send button. Calls `abortControllerRef.current.abort()` to cancel streaming. Shows toast "Generation stopped" on abort.
+- Throttled preview updates: increased throttle from 300ms to 500ms using ref-based mechanism (`lastPreviewUpdateRef` + `pendingPreviewContentRef`). Added `throttledPreviewUpdate` and `flushPreviewUpdate` callbacks. Final preview state always extracted after streaming loop completes.
+- Message virtualization (windowing): only renders last 50 messages in the DOM. Shows "Load earlier messages (N hidden)" button at top when there are more. `visibleMessageLimit` state resets on conversation change. `visibleMessages` computed with useMemo.
+- Better streaming UX:
+  - Created `StreamingMessage` React.memo component with animated pulse ring around avatar, "Streaming · N tokens" status badge with Activity icon, blinking cursor
+  - Created `TypingIndicator` component shown before streaming starts with "Calling model..." text and pulse ring
+  - Smooth scroll-to-bottom animation preserved with `messagesEndRef.scrollIntoView`
+- Optimized extractPreviewContent:
+  - Added module-level cache (`previewCache`) that stores last input and result, returns cached result if text unchanged
+  - Added early-exit: skips regex entirely if text is short (<20 chars) and contains no code block markers (```)
+  - Pre-compiled CODE_BLOCK_INDICATOR regex for the early check
+- Improved message rendering:
+  - Wrapped `CodeBlock` in `React.memo`
+  - Added `useMemo` for `renderedMessages` to prevent re-creating JSX on every render
+  - Used `useMemo` for `parsedFiles` in `FileCreateBar` instead of computing on every render
+  - Reduced message entrance animation duration from 0.25s to 0.2s for snappier feel
+  - Added `visibleMessages` memoization that only slices when message count or limit changes
+- All changes pass `bun run lint` cleanly, dev server compiles successfully
+
+Stage Summary:
+- Stop button allows users to abort streaming responses at any time
+- Preview updates throttled to 500ms with caching prevents excessive re-renders
+- Message windowing keeps DOM small for long conversations (only 50 messages rendered)
+- Streaming UX enhanced with pulse animation, token counter, and dedicated TypingIndicator
+- extractPreviewContent cached with early-exit optimization
+- All message rendering memoized with React.memo and useMemo
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Optimize CodeEditor component
+
+Work Log:
+- Added useRef to track previous file ID for smarter sync
+- Changed file sync effect to only reset when file ID actually changes
+- Added useMemo for PREVIEWABLE_EXTENSIONS Set for O(1) lookup
+- Added useMemo for language computation (before conditional return)
+- Moved derived values (language, displayContent, canPreview) before conditional return to fix hooks rules
+
+Stage Summary:
+- CodeEditor now properly handles hook rules
+- File sync is more efficient with prevFileIdRef tracking
+- Previewable extensions use Set for O(1) lookup
+- All lint errors resolved
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Optimize page.tsx and add keyboard shortcuts panel
+
+Work Log:
+- Changed file count subscription from entire files array to just files.length
+- Added useMemo for latencyColor computation
+- Added Keyboard icon import from lucide-react
+- Added keyboard shortcuts overlay panel (⌘/Ctrl+K)
+- Added ⌘/Ctrl+K keyboard shortcut handler
+- Added keyboard shortcuts button to status bar
+- Updated Escape handler to close shortcuts panel first
+- Truncated model name in status bar with max-width
+
+Stage Summary:
+- page.tsx now has reduced re-renders (subscribing to files.length instead of files array)
+- Added ⌘/Ctrl+K keyboard shortcuts panel with all shortcuts listed
+- Added keyboard shortcuts button in status bar
+- Memoized latencyColor calculation
+- Model name is truncated to prevent overflow
