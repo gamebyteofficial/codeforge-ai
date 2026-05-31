@@ -21,7 +21,8 @@ export type ProviderKey =
   | 'qwen'
   | 'deepseek'
   | 'mistral'
-  | 'openrouter';
+  | 'openrouter'
+  | 'opencode';
 
 interface ProviderConfig {
   name: string;
@@ -96,6 +97,32 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     // Only keep openrouter/auto as hardcoded — other models are fetched dynamically
     models: ['openrouter/auto'],
     testModel: 'openrouter/auto',
+    chatPath: '/chat/completions',
+    openaiCompatible: true,
+    extraHeaders: {
+      'HTTP-Referer': 'https://codeforge-ai.app',
+      'X-Title': 'CodeForge AI',
+    },
+  },
+  opencode: {
+    name: 'OpenCode Zen',
+    baseUrl: 'https://opencode.ai/zen/v1',
+    models: [
+      'opencode/big-pickle',
+      'opencode/claude-haiku-4-5',
+      'opencode/claude-sonnet-4',
+      'opencode/glm-5',
+      'opencode/glm-5.1',
+      'opencode/gpt-4.1',
+      'opencode/gpt-4.1-mini',
+      'opencode/kimi-k2.5',
+      'opencode/mimo-v2-pro-free',
+      'opencode/minimax-m1',
+      'opencode/qwen3-235b-a22b',
+      'opencode/qwen3-coder',
+      'opencode/deepseek-r1',
+    ],
+    testModel: 'opencode/big-pickle',
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {

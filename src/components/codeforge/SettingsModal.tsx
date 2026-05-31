@@ -55,7 +55,8 @@ type ProviderKey =
   | 'qwen'
   | 'deepseek'
   | 'mistral'
-  | 'openrouter';
+  | 'openrouter'
+  | 'opencode';
 
 interface DynamicModel {
   id: string;
@@ -105,6 +106,11 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
     name: 'OpenRouter',
     icon: '🌐',
     keyHint: 'sk-or-... (from openrouter.ai)',
+  },
+  opencode: {
+    name: 'OpenCode Zen',
+    icon: '🧘',
+    keyHint: 'oc-... (from opencode.ai/zen)',
   },
 };
 
@@ -212,7 +218,12 @@ export default function SettingsModal() {
 
   // When provider changes, update model to the first model of that provider
   const handleProviderChange = (provider: string) => {
-    const newSettings = { ...localSettings, provider, model: provider === 'openrouter' ? 'openrouter/auto' : '' };
+    const defaultModel = provider === 'openrouter'
+      ? 'openrouter/auto'
+      : provider === 'opencode'
+        ? 'opencode/big-pickle'
+        : '';
+    const newSettings = { ...localSettings, provider, model: defaultModel };
     setLocalSettings(newSettings);
     setConnectionStatus('idle');
     // Models will be fetched by the useEffect above
@@ -303,7 +314,7 @@ export default function SettingsModal() {
   const currentProvider = localSettings.provider || 'openrouter';
 
   // Group models for display
-  const groupedModels = currentProvider === 'openrouter'
+  const groupedModels = (currentProvider === 'openrouter' || currentProvider === 'opencode')
     ? (() => {
         const auto = models.filter((m) => m.id === 'openrouter/auto');
         const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');

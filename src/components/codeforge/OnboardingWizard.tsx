@@ -44,7 +44,8 @@ type ProviderKey =
   | 'qwen'
   | 'deepseek'
   | 'mistral'
-  | 'openrouter';
+  | 'openrouter'
+  | 'opencode';
 
 interface DynamicModel {
   id: string;
@@ -94,6 +95,11 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
     name: 'OpenRouter',
     icon: '🌐',
     keyHint: 'sk-or-... (from openrouter.ai)',
+  },
+  opencode: {
+    name: 'OpenCode Zen',
+    icon: '🧘',
+    keyHint: 'oc-... (from opencode.ai/zen)',
   },
 };
 
@@ -151,6 +157,8 @@ export default function OnboardingWizard() {
     // Reset model to auto/default
     if (key === 'openrouter') {
       setModel('openrouter/auto');
+    } else if (key === 'opencode') {
+      setModel('opencode/big-pickle');
     } else {
       setModel('');
     }
@@ -694,7 +702,7 @@ function Step3ModelSelection({
   const providerInfo = PROVIDERS[provider];
 
   // Group models for display
-  const groupedModels = provider === 'openrouter'
+  const groupedModels = (provider === 'openrouter' || provider === 'opencode')
     ? (() => {
         const auto = models.filter((m) => m.id === 'openrouter/auto');
         const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');

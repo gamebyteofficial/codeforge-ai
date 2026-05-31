@@ -23,7 +23,8 @@ type ProviderKey =
   | 'qwen'
   | 'deepseek'
   | 'mistral'
-  | 'openrouter';
+  | 'openrouter'
+  | 'opencode';
 
 interface ProviderGuide {
   name: string;
@@ -147,6 +148,22 @@ const PROVIDER_GUIDES: Record<ProviderKey, ProviderGuide> = {
     freeCredits: 'Some free models available without credits!',
     bestModels: ['Auto (Best auto-routing)', 'Any model from 100+ providers', 'Free models available'],
     tip: 'OpenRouter gives you access to ALL providers through one API key! Best value.',
+  },
+  opencode: {
+    name: 'OpenCode Zen',
+    icon: '🧘',
+    getUrl: 'https://opencode.ai/zen',
+    getUrlLabel: 'opencode.ai/zen',
+    steps: [
+      'Go to opencode.ai/zen and create an account',
+      'Add $20 balance to get started (pay-as-you-go)',
+      'Navigate to your API Keys',
+      'Copy the key and paste it here',
+    ],
+    pricing: 'Pay-as-you-go with zero markups: Big Pickle is FREE, Claude Haiku 4.5 from $1/1M input',
+    freeCredits: 'Big Pickle & MiMo V2 Pro are completely FREE!',
+    bestModels: ['Big Pickle (FREE — 355B params, great for coding)', 'MiMo V2 Pro (FREE)', 'Claude Sonnet 4 (Most capable)', 'GLM-5.1 (Latest)', 'Kimi K2.5 (Reasoning)'],
+    tip: 'Big Pickle is a powerful 355B parameter model that\'s completely free — perfect for coding!',
   },
 };
 
@@ -275,6 +292,7 @@ interface QuickProviderCardsProps {
 export function QuickProviderCards({ onSelect, selected }: QuickProviderCardsProps) {
   const recommendedProviders: { key: ProviderKey; reason: string }[] = [
     { key: 'openrouter', reason: 'Access ALL models with one key' },
+    { key: 'opencode', reason: 'Free coding models (Big Pickle!)' },
     { key: 'deepseek', reason: 'Cheapest paid option' },
     { key: 'gemini', reason: 'Generous free tier' },
   ];
@@ -305,6 +323,11 @@ export function QuickProviderCards({ onSelect, selected }: QuickProviderCardsPro
                   {key === 'openrouter' && (
                     <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
                       RECOMMENDED
+                    </span>
+                  )}
+                  {key === 'opencode' && (
+                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-bold text-violet-400">
+                      FREE CODING
                     </span>
                   )}
                   {key === 'deepseek' && (

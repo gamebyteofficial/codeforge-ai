@@ -35,6 +35,21 @@ const STATIC_MODELS: Record<string, { id: string; name: string }[]> = {
     { id: 'mistral-medium-latest', name: 'Mistral Medium' },
     { id: 'codestral-latest', name: 'Codestral' },
   ],
+  opencode: [
+    { id: 'opencode/big-pickle', name: 'Big Pickle (FREE)', isFree: true },
+    { id: 'opencode/mimo-v2-pro-free', name: 'MiMo V2 Pro (FREE)', isFree: true },
+    { id: 'opencode/claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+    { id: 'opencode/claude-sonnet-4', name: 'Claude Sonnet 4' },
+    { id: 'opencode/glm-5', name: 'GLM-5' },
+    { id: 'opencode/glm-5.1', name: 'GLM-5.1' },
+    { id: 'opencode/gpt-4.1', name: 'GPT-4.1' },
+    { id: 'opencode/gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+    { id: 'opencode/kimi-k2.5', name: 'Kimi K2.5' },
+    { id: 'opencode/minimax-m1', name: 'MiniMax M1' },
+    { id: 'opencode/qwen3-235b-a22b', name: 'Qwen3 235B' },
+    { id: 'opencode/qwen3-coder', name: 'Qwen3 Coder' },
+    { id: 'opencode/deepseek-r1', name: 'DeepSeek R1' },
+  ],
 };
 
 // ─── Response Model Type ───────────────────────────────────────────────────────
@@ -140,7 +155,7 @@ function buildStaticModels(provider: string): ModelEntry[] {
     id: m.id,
     name: m.name,
     provider,
-    isFree: false,
+    isFree: (m as { isFree?: boolean }).isFree ?? false,
   }));
 }
 
