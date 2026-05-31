@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
       ? AGENT_SYSTEM_PROMPTS[agent]
       : DEFAULT_SYSTEM_PROMPT;
 
-    // Build messages array
+    // Build messages array with proper system prompt
     const messages: { role: string; content: string }[] = [
-      { role: 'assistant', content: systemPrompt },
+      { role: 'system', content: systemPrompt },
     ];
 
     // Add conversation history if provided
@@ -110,8 +110,9 @@ export async function POST(req: NextRequest) {
     messages.push({ role: 'user', content: message });
 
     // Use provided model or default to openrouter/auto (works with any provider)
-    // The streamLLM function will route based on the configured provider in settings
     const selectedModel = model || 'openrouter/auto';
+
+    console.log(`[Chat API] Request: model=${selectedModel}, agent=${agent || 'default'}, messageLength=${message.length}`);
 
     if (shouldStream) {
       // ─── Streaming Response ───────────────────────────────────────────

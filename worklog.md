@@ -24,29 +24,37 @@ Task: Fix critical bug: selected model not being used by the agent (provider rou
 
 Work Log:
 - Traced the full flow: UI selection → API call → LLM request → provider endpoint
-- Found BUG 1: streamLLM() used MODEL_ALIASES to determine provider, ignoring settings.provider entirely. So selecting 'gpt-4o' with an OpenRouter key would call OpenAI directly with the wrong key
-- Found BUG 2: Chat API route hardcoded 'gpt-4o' as fallback model (line 113), always routing to OpenAI
-- Found BUG 3: ChatPanel showed ALL models from ALL providers, allowing selection of models from unconfigured providers
-- Rewrote streamLLM() to ALWAYS use the configured provider from settings:
-  - When provider is 'openrouter', ALL model requests go through OpenRouter
-  - Direct provider models (e.g., 'gpt-4o') are automatically converted to OpenRouter format (e.g., 'openai/gpt-4o')
-  - When provider is NOT openrouter, only that provider's models are allowed
-  - Added clear error messages when model/provider mismatch
-- Added 'openrouter/auto' as a reliable model option (always works, auto-routes to best model)
-- Fixed ChatPanel ModelSelector to filter models based on configured provider:
-  - OpenRouter users see only OpenRouter models (free + paid)
-  - Other provider users see only their provider's models
-  - Models are grouped as "Free Models" and "Paid Models" for OpenRouter
+- Found BUG 1: streamLLM() used MODEL_ALIASES to determine provider, ignoring settings.provider entirely
+- Found BUG 2: Chat API route hardcoded 'gpt-4o' as fallback model
+- Found BUG 3: ChatPanel showed ALL models from ALL providers
+- Rewrote streamLLM() to ALWAYS use the configured provider from settings
+- Added 'openrouter/auto' as a reliable model option
+- Fixed ChatPanel ModelSelector to filter models based on configured provider
 - Fixed chat API route fallback from 'gpt-4o' to 'openrouter/auto'
-- Added convertToOpenRouterModel() helper to translate direct model IDs to OpenRouter format
-- Updated OnboardingWizard, SettingsModal with 'openrouter/auto' option
-- Updated store default to 'openrouter/auto'
-- Cleared old settings from database
-- Verified lint passes and app compiles
 
 Stage Summary:
 - CRITICAL FIX: streamLLM() now ALWAYS routes through the configured provider
-- When using OpenRouter, all models (including OpenAI, Anthropic, etc.) go through OpenRouter
 - Model selector now only shows models available for the configured provider
-- Added 'openrouter/auto' as the recommended default model (always works)
-- No more "wrong API key for wrong endpoint" errors
+- Added 'openrouter/auto' as the recommended default model
+
+---
+Task ID: 3
+Agent: full-stack-developer + Main Agent
+Task: Fix "No endpoints found" error for all free OpenRouter models + dynamic model fetching
+
+Work Log:
+- Created /api/models route for dynamic model fetching from OpenRouter API
+- Rewrote llm.ts: removed hardcoded free models, only openrouter/auto as guaranteed model
+- Simplified streamLLM() - no complex alias resolution, direct provider routing
+- Added console logging for every API call
+- Fixed system prompt handling: proper 'system' role instead of 'assistant'
+- Rewrote ChatPanel.tsx: dynamic model selector, connection status, model info in messages
+- Rewrote OnboardingWizard.tsx: dynamic model fetching, OpenRouter as default
+- Rewrote SettingsModal.tsx: dynamic model fetching, refresh button
+- Reset database for fresh start
+
+Stage Summary:
+- FIXED: "No endpoints found" by removing broken hardcoded free models
+- ADDED: Dynamic model fetching from OpenRouter API
+- ADDED: Connection status indicator, model info in messages
+- CHANGED: Default to OpenRouter + openrouter/auto

@@ -4,10 +4,10 @@
  * Supports: OpenAI, Anthropic, Google Gemini, Qwen, DeepSeek, Mistral, OpenRouter
  * Each provider uses the user's own API key stored in settings.
  *
- * CRITICAL: The provider configured in settings ALWAYS takes precedence.
- * If the user configures OpenRouter, ALL model requests go through OpenRouter.
- * This prevents the bug where a model like "gpt-4o" routes to OpenAI directly
- * even though the user only has an OpenRouter API key.
+ * IMPORTANT: Model lists are fetched dynamically from the /api/models endpoint.
+ * The only hardcoded model is `openrouter/auto` which always works as a fallback.
+ * Free models on OpenRouter are dynamic and may become unavailable — always use
+ * `openrouter/auto` as the default.
  */
 
 import { db } from '@/lib/db';
@@ -26,9 +26,9 @@ export type ProviderKey =
 interface ProviderConfig {
   name: string;
   baseUrl: string;
-  /** Models that this provider supports */
+  /** Default models for this provider (used as fallback when dynamic fetch fails) */
   models: string[];
-  /** Model to use for connection testing (defaults to models[0]) */
+  /** Model to use for connection testing */
   testModel?: string;
   /** Chat completions path (for OpenAI-compatible APIs) */
   chatPath: string;
@@ -47,6 +47,7 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
+    testModel: 'gpt-3.5-turbo',
     chatPath: '/chat/completions',
     openaiCompatible: true,
   },
@@ -54,6 +55,7 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     name: 'Anthropic',
     baseUrl: 'https://api.anthropic.com',
     models: ['claude-3.5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
+    testModel: 'claude-3-haiku-20240307',
     chatPath: '/v1/messages',
     openaiCompatible: false,
     anthropicFormat: true,
@@ -62,6 +64,7 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     name: 'Google Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    testModel: 'gemini-2.0-flash',
     chatPath: '', // Dynamic per model
     openaiCompatible: false,
     geminiFormat: true,
@@ -90,23 +93,8 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
   openrouter: {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
-    models: [
-      // Auto-routing (always works, picks best available model)
-      'openrouter/auto',
-      // Free models
-      'google/gemma-2-9b-it:free',
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'mistralai/mistral-7b-instruct:free',
-      'qwen/qwen-2-7b-instruct:free',
-      'huggingfaceh4/zephyr-7b-beta:free',
-      // Popular paid models (routed through OpenRouter)
-      'openai/gpt-4o',
-      'openai/gpt-4o-mini',
-      'anthropic/claude-3.5-sonnet',
-      'google/gemini-2.0-flash-001',
-      'meta-llama/llama-3.1-70b-instruct',
-      'deepseek/deepseek-chat',
-    ],
+    // Only keep openrouter/auto as hardcoded — other models are fetched dynamically
+    models: ['openrouter/auto'],
     testModel: 'openrouter/auto',
     chatPath: '/chat/completions',
     openaiCompatible: true,
@@ -116,77 +104,6 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     },
   },
 };
-
-// ─── Model Alias Map ─────────────────────────────────────────────────────────
-// Maps friendly model names to { provider, actualModel }
-// Used ONLY when the configured provider matches the alias provider,
-// OR for OpenRouter provider which can route to any model.
-
-const MODEL_ALIASES: Record<string, { provider: ProviderKey; actualModel: string }> = {
-  // OpenAI direct
-  'gpt-4o': { provider: 'openai', actualModel: 'gpt-4o' },
-  'gpt-4-turbo': { provider: 'openai', actualModel: 'gpt-4-turbo' },
-  'gpt-3.5-turbo': { provider: 'openai', actualModel: 'gpt-3.5-turbo' },
-  'o1': { provider: 'openai', actualModel: 'o1' },
-  'o1-mini': { provider: 'openai', actualModel: 'o1-mini' },
-  // Anthropic direct
-  'claude-3.5-sonnet': { provider: 'anthropic', actualModel: 'claude-3.5-sonnet-20241022' },
-  'claude-3-opus': { provider: 'anthropic', actualModel: 'claude-3-opus-20240229' },
-  'claude-3-haiku': { provider: 'anthropic', actualModel: 'claude-3-haiku-20240307' },
-  // Gemini direct
-  'gemini-2.0-flash': { provider: 'gemini', actualModel: 'gemini-2.0-flash' },
-  'gemini-1.5-pro': { provider: 'gemini', actualModel: 'gemini-1.5-pro' },
-  'gemini-1.5-flash': { provider: 'gemini', actualModel: 'gemini-1.5-flash' },
-  // Qwen direct
-  'qwen-2.5-72b': { provider: 'qwen', actualModel: 'qwen-2.5-72b-instruct' },
-  'qwen-2.5-coder-32b': { provider: 'qwen', actualModel: 'qwen-2.5-coder-32b-instruct' },
-  // DeepSeek direct
-  'deepseek-chat': { provider: 'deepseek', actualModel: 'deepseek-chat' },
-  'deepseek-coder': { provider: 'deepseek', actualModel: 'deepseek-coder' },
-  // Mistral direct
-  'mistral-large': { provider: 'mistral', actualModel: 'mistral-large-latest' },
-  'mistral-medium': { provider: 'mistral', actualModel: 'mistral-medium-latest' },
-  'codestral': { provider: 'mistral', actualModel: 'codestral-latest' },
-  // OpenRouter models (these already contain the full model ID)
-  'openrouter/auto': { provider: 'openrouter', actualModel: 'openrouter/auto' },
-  'google/gemma-2-9b-it:free': { provider: 'openrouter', actualModel: 'google/gemma-2-9b-it:free' },
-  'meta-llama/llama-3.1-8b-instruct:free': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-8b-instruct:free' },
-  'mistralai/mistral-7b-instruct:free': { provider: 'openrouter', actualModel: 'mistralai/mistral-7b-instruct:free' },
-  'qwen/qwen-2-7b-instruct:free': { provider: 'openrouter', actualModel: 'qwen/qwen-2-7b-instruct:free' },
-  'huggingfaceh4/zephyr-7b-beta:free': { provider: 'openrouter', actualModel: 'huggingfaceh4/zephyr-7b-beta:free' },
-  'openai/gpt-4o': { provider: 'openrouter', actualModel: 'openai/gpt-4o' },
-  'openai/gpt-4o-mini': { provider: 'openrouter', actualModel: 'openai/gpt-4o-mini' },
-  'anthropic/claude-3.5-sonnet': { provider: 'openrouter', actualModel: 'anthropic/claude-3.5-sonnet' },
-  'google/gemini-2.0-flash-001': { provider: 'openrouter', actualModel: 'google/gemini-2.0-flash-001' },
-  'meta-llama/llama-3.1-70b-instruct': { provider: 'openrouter', actualModel: 'meta-llama/llama-3.1-70b-instruct' },
-  'deepseek/deepseek-chat': { provider: 'openrouter', actualModel: 'deepseek/deepseek-chat' },
-};
-
-// ─── Provider Prefix Map for OpenRouter ──────────────────────────────────────
-// When the user configures OpenRouter but selects a model from another provider
-// (e.g., 'gpt-4o'), we need to prefix it with the OpenRouter provider namespace.
-
-const OPENROUTER_PREFIX_MAP: Record<string, string> = {
-  openai: 'openai/',
-  anthropic: 'anthropic/',
-  gemini: 'google/',
-  qwen: 'qwen/',
-  deepseek: 'deepseek/',
-  mistral: 'mistralai/',
-  openrouter: '',
-};
-
-/**
- * Convert a direct provider model to its OpenRouter model ID.
- * E.g., 'gpt-4o' (OpenAI) → 'openai/gpt-4o' (OpenRouter)
- */
-function convertToOpenRouterModel(alias: { provider: ProviderKey; actualModel: string }): string {
-  const prefix = OPENROUTER_PREFIX_MAP[alias.provider] || '';
-  if (prefix && !alias.actualModel.startsWith(prefix)) {
-    return `${prefix}${alias.actualModel}`;
-  }
-  return alias.actualModel;
-}
 
 // ─── Settings Helper ─────────────────────────────────────────────────────────
 
@@ -232,6 +149,8 @@ async function* streamOpenAICompatible(
     stream: true,
   });
 
+  console.log(`[LLM] Calling ${config.name} API: ${url} with model: ${model}`);
+
   const response = await fetch(url, {
     method: 'POST',
     headers,
@@ -245,6 +164,7 @@ async function* streamOpenAICompatible(
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
     } catch {}
+    console.error(`[LLM] ${config.name} API error: ${response.status} - ${errorMessage}`);
     yield { content: '', error: errorMessage, done: true };
     return;
   }
@@ -314,9 +234,9 @@ async function* streamAnthropic(
   };
 
   // Separate system prompt from messages
-  const systemPrompt = messages.find((m) => m.role === 'assistant')?.content || '';
-  const chatMessages = messages.filter((m) => m.role !== 'assistant').map((m) => ({
-    role: m.role === 'system' ? 'user' : m.role,
+  const systemPrompt = messages.find((m) => m.role === 'system')?.content || '';
+  const chatMessages = messages.filter((m) => m.role !== 'system').map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
     content: m.content,
   }));
 
@@ -328,6 +248,8 @@ async function* streamAnthropic(
     messages: chatMessages,
     stream: true,
   });
+
+  console.log(`[LLM] Calling Anthropic API with model: ${model}`);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -342,6 +264,7 @@ async function* streamAnthropic(
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
     } catch {}
+    console.error(`[LLM] Anthropic API error: ${response.status} - ${errorMessage}`);
     yield { content: '', error: errorMessage, done: true };
     return;
   }
@@ -408,9 +331,9 @@ async function* streamGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
   // Convert messages to Gemini format
-  const systemInstruction = messages.find((m) => m.role === 'assistant')?.content || '';
+  const systemInstruction = messages.find((m) => m.role === 'system')?.content || '';
   const contents = messages
-    .filter((m) => m.role !== 'assistant')
+    .filter((m) => m.role !== 'system')
     .map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
@@ -425,6 +348,8 @@ async function* streamGemini(
     },
   });
 
+  console.log(`[LLM] Calling Gemini API with model: ${model}`);
+
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -438,6 +363,7 @@ async function* streamGemini(
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error?.message || errorMessage;
     } catch {}
+    console.error(`[LLM] Gemini API error: ${response.status} - ${errorMessage}`);
     yield { content: '', error: errorMessage, done: true };
     return;
   }
@@ -500,13 +426,14 @@ export interface LLMCallOptions {
 /**
  * Create a streaming generator for the given model using the user's API key.
  *
- * CRITICAL: This function ALWAYS uses the provider configured in user settings.
- * - If the user configured OpenRouter, ALL requests go through OpenRouter,
- *   even for models like "gpt-4o" that belong to OpenAI.
- * - If the user configured OpenAI directly, only OpenAI models are allowed.
+ * HOW IT WORKS:
+ * 1. Reads the configured provider and API key from settings database
+ * 2. Routes the request to the correct provider's API
+ * 3. For OpenRouter: passes the model ID as-is (e.g., "openrouter/auto", "openai/gpt-4o")
+ * 4. For direct providers: uses the model ID directly with that provider's API
  *
- * This prevents the bug where selecting a model from a different provider
- * would try to use the wrong API key with the wrong endpoint.
+ * This function makes REAL API calls to the selected provider.
+ * There is NO mock or fallback behavior.
  */
 export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<StreamChunk> {
   const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
@@ -521,49 +448,12 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
     return;
   }
 
-  // ── Step 2: Resolve the actual model ID based on the configured provider ──
-  let actualModel = model;
+  // ── Step 2: Determine the provider and model ──
   let provider = configuredProvider;
-  const alias = MODEL_ALIASES[model];
+  let actualModel = model;
 
-  if (configuredProvider === 'openrouter') {
-    // OpenRouter can route to ANY model from ANY provider.
-    // Convert the model ID to its OpenRouter format.
-    if (alias) {
-      if (alias.provider === 'openrouter') {
-        // Already an OpenRouter model ID (e.g., 'openrouter/auto', 'openai/gpt-4o')
-        actualModel = alias.actualModel;
-      } else {
-        // It's a direct provider model (e.g., 'gpt-4o' → needs 'openai/gpt-4o' on OpenRouter)
-        actualModel = convertToOpenRouterModel(alias);
-      }
-    } else {
-      // Unknown model — pass through as-is (might be a valid OpenRouter model ID the user typed)
-      actualModel = model;
-    }
-    // Always use OpenRouter config
-    provider = 'openrouter';
-  } else {
-    // For non-OpenRouter providers, only allow models from that provider
-    if (alias) {
-      if (alias.provider === configuredProvider) {
-        // Model matches the configured provider
-        actualModel = alias.actualModel;
-      } else {
-        // Model belongs to a DIFFERENT provider than what's configured
-        yield {
-          content: '',
-          error: `Model "${model}" is a ${PROVIDER_CONFIGS[alias.provider].name} model, but you have ${PROVIDER_CONFIGS[configuredProvider].name} configured. Please select a model from your configured provider, or switch to OpenRouter which supports all models.`,
-          done: true,
-        };
-        return;
-      }
-    } else {
-      // Unknown model — pass through as-is
-      actualModel = model;
-    }
-  }
-
+  // For OpenRouter, the model ID is passed as-is to OpenRouter's API
+  // For direct providers, use their own config
   const config = PROVIDER_CONFIGS[provider];
   if (!config) {
     yield { content: '', error: `Unknown provider: ${provider}`, done: true };
@@ -571,6 +461,8 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
   }
 
   // ── Step 3: Route to the appropriate provider API ──
+  console.log(`[LLM] Streaming request: provider=${provider}, model=${actualModel}`);
+
   try {
     if (config.anthropicFormat) {
       yield* streamAnthropic(apiKey, actualModel, messages, temperature, maxTokens);
@@ -582,6 +474,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error(`[LLM] Fatal error calling ${config.name}:`, message);
     yield { content: '', error: `Failed to connect to ${config.name}: ${message}`, done: true };
   }
 }
@@ -721,6 +614,7 @@ export async function testProviderConnection(
 
 /**
  * Get the list of available models grouped by provider.
+ * NOTE: For dynamic model lists, use the /api/models endpoint instead.
  */
 export function getAvailableModels() {
   return Object.entries(PROVIDER_CONFIGS).map(([key, config]) => ({
@@ -731,20 +625,16 @@ export function getAvailableModels() {
 }
 
 /**
- * Get provider key from model alias.
+ * Get provider config for a given provider key.
  */
-export function getProviderForModel(model: string): ProviderKey | null {
-  return MODEL_ALIASES[model]?.provider ?? null;
+export function getProviderConfig(provider: ProviderKey): ProviderConfig | undefined {
+  return PROVIDER_CONFIGS[provider];
 }
 
 /**
  * Get the list of models available for a specific provider.
- * For OpenRouter, this includes all models (OpenRouter can route to any provider).
- * For other providers, only their own models are returned.
+ * For dynamic model lists (especially OpenRouter), use the /api/models endpoint.
  */
 export function getModelsForProvider(provider: ProviderKey): string[] {
-  if (provider === 'openrouter') {
-    return PROVIDER_CONFIGS.openrouter.models;
-  }
   return PROVIDER_CONFIGS[provider]?.models || [];
 }

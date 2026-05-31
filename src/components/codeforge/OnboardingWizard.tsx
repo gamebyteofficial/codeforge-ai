@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap,
@@ -15,6 +15,7 @@ import {
   Code2,
   Terminal,
   Brain,
+  RefreshCw,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -41,9 +42,15 @@ type ProviderKey =
   | 'mistral'
   | 'openrouter';
 
+interface DynamicModel {
+  id: string;
+  name: string;
+  provider: string;
+  isFree: boolean;
+}
+
 interface ProviderInfo {
   name: string;
-  models: string[];
   icon: string;
   keyHint?: string;
 }
@@ -51,56 +58,36 @@ interface ProviderInfo {
 const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
   openai: {
     name: 'OpenAI',
-    models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
     icon: '🟢',
     keyHint: 'sk-... (from platform.openai.com)',
   },
   anthropic: {
     name: 'Anthropic',
-    models: ['claude-3.5-sonnet', 'claude-3-opus', 'claude-3-haiku'],
     icon: '🟠',
     keyHint: 'sk-ant-... (from console.anthropic.com)',
   },
   gemini: {
     name: 'Google Gemini',
-    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
     icon: '🔵',
     keyHint: 'AI... (from aistudio.google.com)',
   },
   qwen: {
     name: 'Qwen',
-    models: ['qwen-2.5-72b', 'qwen-2.5-coder-32b'],
     icon: '🟣',
     keyHint: 'sk-... (from dashscope.aliyuncs.com)',
   },
   deepseek: {
     name: 'DeepSeek',
-    models: ['deepseek-chat', 'deepseek-coder'],
     icon: '🔷',
     keyHint: 'sk-... (from platform.deepseek.com)',
   },
   mistral: {
     name: 'Mistral',
-    models: ['mistral-large', 'mistral-medium', 'codestral'],
     icon: '🟡',
     keyHint: '... (from console.mistral.ai)',
   },
   openrouter: {
     name: 'OpenRouter',
-    models: [
-      'openrouter/auto',
-      'google/gemma-2-9b-it:free',
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'mistralai/mistral-7b-instruct:free',
-      'qwen/qwen-2-7b-instruct:free',
-      'huggingfaceh4/zephyr-7b-beta:free',
-      'openai/gpt-4o',
-      'openai/gpt-4o-mini',
-      'anthropic/claude-3.5-sonnet',
-      'google/gemini-2.0-flash-001',
-      'meta-llama/llama-3.1-70b-instruct',
-      'deepseek/deepseek-chat',
-    ],
     icon: '🌐',
     keyHint: 'sk-or-... (from openrouter.ai)',
   },
@@ -132,14 +119,16 @@ export default function OnboardingWizard() {
   const [direction, setDirection] = useState(1);
 
   // Step 2 state
-  const [provider, setProvider] = useState<ProviderKey>('openai');
+  const [provider, setProvider] = useState<ProviderKey>('openrouter');
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Step 3 state
-  const [model, setModel] = useState(PROVIDERS.openai.models[0]);
+  const [model, setModel] = useState('openrouter/auto');
+  const [models, setModels] = useState<DynamicModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [isSaving, setIsSaving] = useState(false);
@@ -152,9 +141,53 @@ export default function OnboardingWizard() {
   const handleProviderChange = (newProvider: string) => {
     const key = newProvider as ProviderKey;
     setProvider(key);
-    setModel(PROVIDERS[key].models[0]);
     setConnectionStatus('idle');
+    // Reset model to auto/default
+    if (key === 'openrouter') {
+      setModel('openrouter/auto');
+    } else {
+      setModel('');
+    }
+    setModels([]);
   };
+
+  // Fetch models when moving to step 2 (after connection test) or when provider changes
+  const fetchModels = useCallback(async () => {
+    setIsLoadingModels(true);
+    try {
+      // Save provider temporarily so /api/models can read it
+      const tempRes = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { provider, apiKey } }),
+      });
+
+      if (tempRes.ok) {
+        const modelsRes = await fetch('/api/models');
+        if (modelsRes.ok) {
+          const data = await modelsRes.json();
+          const fetchedModels: DynamicModel[] = data.models || [];
+          setModels(fetchedModels);
+          // Set default model
+          if (fetchedModels.length > 0) {
+            const defaultModel = fetchedModels.find((m) => m.id === 'openrouter/auto') || fetchedModels[0];
+            setModel(defaultModel.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, [provider, apiKey]);
+
+  // Fetch models when entering step 3
+  useEffect(() => {
+    if (step === 2) {
+      fetchModels();
+    }
+  }, [step, fetchModels]);
 
   const handleTestConnection = useCallback(async () => {
     setIsTesting(true);
@@ -335,11 +368,14 @@ export default function OnboardingWizard() {
                 <Step3ModelSelection
                   provider={provider}
                   model={model}
+                  models={models}
+                  isLoadingModels={isLoadingModels}
                   temperature={temperature}
                   maxTokens={maxTokens}
                   onModelChange={setModel}
                   onTemperatureChange={setTemperature}
                   onMaxTokensChange={setMaxTokens}
+                  onRefreshModels={fetchModels}
                 />
               </motion.div>
             )}
@@ -529,6 +565,7 @@ function Step2ApiKey({
           <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs text-zinc-500">
             Active: {PROVIDERS[provider].name}
+            {provider === 'openrouter' && ' (Recommended — supports all models)'}
           </span>
         </div>
       </div>
@@ -540,13 +577,7 @@ function Step2ApiKey({
           <Input
             type={showApiKey ? 'text' : 'password'}
             value={apiKey}
-            onChange={(e) => {
-              onApiKeyChange(e.target.value);
-              if (connectionStatus !== 'idle') {
-                // Reset connection status when key changes
-                // This is handled by the parent via connectionStatus reset on provider change
-              }
-            }}
+            onChange={(e) => onApiKeyChange(e.target.value)}
             placeholder={PROVIDERS[provider].keyHint || 'sk-...'}
             className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm focus-visible:border-emerald-500/50 focus-visible:ring-emerald-500/20"
             autoFocus
@@ -620,24 +651,43 @@ function Step2ApiKey({
 interface Step3Props {
   provider: ProviderKey;
   model: string;
+  models: DynamicModel[];
+  isLoadingModels: boolean;
   temperature: number;
   maxTokens: number;
   onModelChange: (model: string) => void;
   onTemperatureChange: (temp: number) => void;
   onMaxTokensChange: (tokens: number) => void;
+  onRefreshModels: () => void;
 }
 
 function Step3ModelSelection({
   provider,
   model,
+  models,
+  isLoadingModels,
   temperature,
   maxTokens,
   onModelChange,
   onTemperatureChange,
   onMaxTokensChange,
+  onRefreshModels,
 }: Step3Props) {
   const providerInfo = PROVIDERS[provider];
-  const models = providerInfo.models;
+
+  // Group models for display
+  const groupedModels = provider === 'openrouter'
+    ? (() => {
+        const auto = models.filter((m) => m.id === 'openrouter/auto');
+        const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');
+        const paid = models.filter((m) => !m.isFree);
+        const groups: { label: string; models: DynamicModel[] }[] = [];
+        if (auto.length) groups.push({ label: '⚡ Auto-Routing (Recommended)', models: auto });
+        if (free.length) groups.push({ label: `🆓 Free Models (${free.length})`, models: free });
+        if (paid.length) groups.push({ label: `💎 Paid Models (${paid.length})`, models: paid });
+        return groups;
+      })()
+    : [{ label: providerInfo.name, models }];
 
   return (
     <div className="space-y-5">
@@ -661,23 +711,65 @@ function Step3ModelSelection({
 
       {/* Model Selection */}
       <div className="space-y-2">
-        <Label className="text-zinc-300 text-xs">Model</Label>
-        <Select value={model} onValueChange={onModelChange}>
-          <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
-            <SelectValue placeholder="Select model" />
-          </SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
-            {models.map((m) => (
-              <SelectItem
-                key={m}
-                value={m}
-                className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
-              >
-                {m}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center justify-between">
+          <Label className="text-zinc-300 text-xs">Model</Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2 text-xs text-zinc-500 hover:text-zinc-300"
+            onClick={onRefreshModels}
+            disabled={isLoadingModels}
+          >
+            <RefreshCw className={`size-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+
+        {isLoadingModels ? (
+          <div className="flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/30 py-6">
+            <Loader2 className="size-4 animate-spin text-emerald-500" />
+            <span className="ml-2 text-sm text-zinc-400">Loading models...</span>
+          </div>
+        ) : (
+          <Select value={model} onValueChange={onModelChange}>
+            <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-800 border-zinc-800 max-h-60">
+              {groupedModels.map((group) => (
+                <div key={group.label}>
+                  <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    {group.label}
+                  </div>
+                  {group.models.map((m) => (
+                    <SelectItem
+                      key={m.id}
+                      value={m.id}
+                      className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate">{m.name}</span>
+                        {m.isFree && (
+                          <span className="shrink-0 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
+                            FREE
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </div>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {model && (
+          <div className="rounded-md border border-zinc-800 bg-zinc-800/20 px-3 py-2">
+            <p className="text-xs text-zinc-400">
+              Selected: <span className="text-emerald-400 font-mono">{model}</span>
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Temperature Slider */}

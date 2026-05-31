@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -52,9 +53,15 @@ type ProviderKey =
   | 'mistral'
   | 'openrouter';
 
+interface DynamicModel {
+  id: string;
+  name: string;
+  provider: string;
+  isFree: boolean;
+}
+
 interface ProviderInfo {
   name: string;
-  models: string[];
   icon: string;
   keyHint?: string;
 }
@@ -62,56 +69,36 @@ interface ProviderInfo {
 const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
   openai: {
     name: 'OpenAI',
-    models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini'],
     icon: '🟢',
     keyHint: 'sk-... (from platform.openai.com)',
   },
   anthropic: {
     name: 'Anthropic',
-    models: ['claude-3.5-sonnet', 'claude-3-opus', 'claude-3-haiku'],
     icon: '🟠',
     keyHint: 'sk-ant-... (from console.anthropic.com)',
   },
   gemini: {
     name: 'Google Gemini',
-    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
     icon: '🔵',
     keyHint: 'AI... (from aistudio.google.com)',
   },
   qwen: {
     name: 'Qwen',
-    models: ['qwen-2.5-72b', 'qwen-2.5-coder-32b'],
     icon: '🟣',
     keyHint: 'sk-... (from dashscope.aliyuncs.com)',
   },
   deepseek: {
     name: 'DeepSeek',
-    models: ['deepseek-chat', 'deepseek-coder'],
     icon: '🔷',
     keyHint: 'sk-... (from platform.deepseek.com)',
   },
   mistral: {
     name: 'Mistral',
-    models: ['mistral-large', 'mistral-medium', 'codestral'],
     icon: '🟡',
     keyHint: '... (from console.mistral.ai)',
   },
   openrouter: {
     name: 'OpenRouter',
-    models: [
-      'openrouter/auto',
-      'google/gemma-2-9b-it:free',
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'mistralai/mistral-7b-instruct:free',
-      'qwen/qwen-2-7b-instruct:free',
-      'huggingfaceh4/zephyr-7b-beta:free',
-      'openai/gpt-4o',
-      'openai/gpt-4o-mini',
-      'anthropic/claude-3.5-sonnet',
-      'google/gemini-2.0-flash-001',
-      'meta-llama/llama-3.1-70b-instruct',
-      'deepseek/deepseek-chat',
-    ],
     icon: '🌐',
     keyHint: 'sk-or-... (from openrouter.ai)',
   },
@@ -120,9 +107,9 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
 // ─── Default Settings ────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: Record<string, string> = {
-  provider: 'openai',
+  provider: 'openrouter',
   apiKey: '',
-  model: 'gpt-4o',
+  model: 'openrouter/auto',
   language: 'typescript',
   framework: 'nextjs',
   autoSave: 'true',
@@ -147,6 +134,10 @@ export default function SettingsModal() {
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  // Dynamic models state
+  const [models, setModels] = useState<DynamicModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
   // Load settings from API when dialog opens
   useEffect(() => {
     if (isSettingsOpen) {
@@ -161,8 +152,9 @@ export default function SettingsModal() {
       if (res.ok) {
         const data = await res.json();
         if (data.settings && Object.keys(data.settings).length > 0) {
-          setLocalSettings({ ...DEFAULT_SETTINGS, ...data.settings });
-          setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
+          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+          setLocalSettings(merged);
+          setSettings(merged);
         } else {
           setLocalSettings({ ...DEFAULT_SETTINGS, ...settings });
         }
@@ -176,6 +168,36 @@ export default function SettingsModal() {
     }
   }, [settings, setSettings]);
 
+  // Fetch models when provider changes or on initial load
+  const fetchModels = useCallback(async () => {
+    setIsLoadingModels(true);
+    try {
+      // Save the current provider temporarily so /api/models reads it
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: localSettings }),
+      });
+
+      const res = await fetch('/api/models');
+      if (res.ok) {
+        const data = await res.json();
+        setModels(data.models || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, [localSettings]);
+
+  // Fetch models when dialog opens and settings are loaded
+  useEffect(() => {
+    if (isSettingsOpen && !isLoading && localSettings.provider) {
+      fetchModels();
+    }
+  }, [isSettingsOpen, isLoading, localSettings.provider, fetchModels]);
+
   // Update a single setting locally
   const updateSetting = (key: string, value: string) => {
     setLocalSettings((prev) => ({ ...prev, [key]: value }));
@@ -183,13 +205,10 @@ export default function SettingsModal() {
 
   // When provider changes, update model to the first model of that provider
   const handleProviderChange = (provider: string) => {
-    const providerInfo = PROVIDERS[provider as ProviderKey];
-    const firstModel = providerInfo?.models[0] || '';
-    setLocalSettings((prev) => ({
-      ...prev,
-      provider,
-      model: firstModel,
-    }));
+    const newSettings = { ...localSettings, provider, model: provider === 'openrouter' ? 'openrouter/auto' : '' };
+    setLocalSettings(newSettings);
+    setConnectionStatus('idle');
+    // Models will be fetched by the useEffect above
   };
 
   // Save settings to API
@@ -274,8 +293,21 @@ export default function SettingsModal() {
     setIsSettingsOpen(false);
   };
 
-  const currentProvider = localSettings.provider || 'openai';
-  const currentModels = PROVIDERS[currentProvider as ProviderKey]?.models || [];
+  const currentProvider = localSettings.provider || 'openrouter';
+
+  // Group models for display
+  const groupedModels = currentProvider === 'openrouter'
+    ? (() => {
+        const auto = models.filter((m) => m.id === 'openrouter/auto');
+        const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');
+        const paid = models.filter((m) => !m.isFree);
+        const groups: { label: string; models: DynamicModel[] }[] = [];
+        if (auto.length) groups.push({ label: '⚡ Auto-Routing (Recommended)', models: auto });
+        if (free.length) groups.push({ label: `🆓 Free Models (${free.length})`, models: free });
+        if (paid.length) groups.push({ label: `💎 Paid Models (${paid.length})`, models: paid });
+        return groups;
+      })()
+    : [{ label: PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider, models }];
 
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -370,6 +402,7 @@ export default function SettingsModal() {
                       <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span className="text-xs text-zinc-500">
                         Active: {PROVIDERS[currentProvider as ProviderKey]?.name || currentProvider}
+                        {currentProvider === 'openrouter' && ' (Supports all models)'}
                       </span>
                     </div>
                   </div>
@@ -406,30 +439,68 @@ export default function SettingsModal() {
                     </p>
                   </div>
 
-                  {/* Model Selection */}
+                  {/* Model Selection - Dynamic */}
                   <div className="space-y-2">
-                    <Label className="text-zinc-300 text-xs">
-                      Model
-                    </Label>
-                    <Select
-                      value={localSettings.model || ''}
-                      onValueChange={(v) => updateSetting('model', v)}
-                    >
-                      <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
-                        <SelectValue placeholder="Select model" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-zinc-800 border-zinc-700">
-                        {currentModels.map((model) => (
-                          <SelectItem
-                            key={model}
-                            value={model}
-                            className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
-                          >
-                            {model}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-zinc-300 text-xs">Model</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-1 px-2 text-xs text-zinc-500 hover:text-zinc-300"
+                        onClick={fetchModels}
+                        disabled={isLoadingModels}
+                      >
+                        <RefreshCw className={`size-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
+                    </div>
+                    {isLoadingModels ? (
+                      <div className="flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/30 py-4">
+                        <Loader2 className="size-4 animate-spin text-emerald-500" />
+                        <span className="ml-2 text-sm text-zinc-400">Loading models...</span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={localSettings.model || ''}
+                        onValueChange={(v) => updateSetting('model', v)}
+                      >
+                        <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
+                          <SelectValue placeholder="Select model" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-800 border-zinc-800 max-h-60">
+                          {groupedModels.map((group) => (
+                            <div key={group.label}>
+                              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                                {group.label}
+                              </div>
+                              {group.models.map((m) => (
+                                <SelectItem
+                                  key={m.id}
+                                  value={m.id}
+                                  className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="flex-1 truncate">{m.name}</span>
+                                    {m.isFree && (
+                                      <span className="shrink-0 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
+                                        FREE
+                                      </span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </div>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {localSettings.model && (
+                      <div className="rounded-md border border-zinc-800 bg-zinc-800/20 px-3 py-2">
+                        <p className="text-xs text-zinc-400">
+                          Active model: <span className="text-emerald-400 font-mono">{localSettings.model}</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Test Connection */}

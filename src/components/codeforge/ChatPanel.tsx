@@ -23,6 +23,9 @@ import {
   Sparkles,
   Hash,
   ChevronDown,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from 'lucide-react';
 import { useAppStore, type AgentType } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -44,6 +47,19 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface DynamicModel {
+  id: string;
+  name: string;
+  provider: string;
+  pricing?: { prompt: string; completion: string };
+  contextLength?: number;
+  isFree: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -76,59 +92,6 @@ const AGENT_CONFIG: Record<AgentType, { label: string; icon: React.ReactNode; co
     color: 'text-violet-400',
   },
 };
-
-// Model options grouped by provider
-type ProviderKey = 'openai' | 'anthropic' | 'gemini' | 'qwen' | 'deepseek' | 'mistral' | 'openrouter';
-
-interface ModelOption {
-  id: string;
-  name: string;
-  provider: ProviderKey;
-  providerName: string;
-  icon: string;
-}
-
-// All possible model options, grouped by provider.
-// The ModelSelector filters these based on the user's configured provider.
-const ALL_MODEL_OPTIONS: ModelOption[] = [
-  // ── OpenAI direct ──
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
-  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
-  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
-  { id: 'o1', name: 'o1', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
-  { id: 'o1-mini', name: 'o1 Mini', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
-  // ── Anthropic direct ──
-  { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
-  { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
-  { id: 'claude-3-haiku', name: 'Claude 3 Haiku', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
-  // ── Gemini direct ──
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini', providerName: 'Gemini', icon: '🔵' },
-  // ── Qwen direct ──
-  { id: 'qwen-2.5-72b', name: 'Qwen 2.5 72B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
-  { id: 'qwen-2.5-coder-32b', name: 'Qwen 2.5 Coder 32B', provider: 'qwen', providerName: 'Qwen', icon: '🟣' },
-  // ── DeepSeek direct ──
-  { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
-  { id: 'deepseek-coder', name: 'DeepSeek Coder', provider: 'deepseek', providerName: 'DeepSeek', icon: '🔷' },
-  // ── Mistral direct ──
-  { id: 'mistral-large', name: 'Mistral Large', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
-  { id: 'mistral-medium', name: 'Mistral Medium', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
-  { id: 'codestral', name: 'Codestral', provider: 'mistral', providerName: 'Mistral', icon: '🟡' },
-  // ── OpenRouter ── (all models available through OpenRouter)
-  { id: 'openrouter/auto', name: 'Auto (Best Available)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'huggingfaceh4/zephyr-7b-beta:free', name: 'Zephyr 7B (Free)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat (via OpenRouter)', provider: 'openrouter', providerName: 'OpenRouter', icon: '🌐' },
-];
 
 const SUGGESTED_PROMPTS = [
   { label: 'Build a React dashboard with charts', icon: <FileCode2 className="size-4" /> },
@@ -337,7 +300,7 @@ function MarkdownRenderer({ content, onApplyCode }: { content: string; onApplyCo
 }
 
 // ---------------------------------------------------------------------------
-// Model Selector Popover
+// Model Selector Popover – fetches models dynamically from /api/models
 // ---------------------------------------------------------------------------
 
 function ModelSelector({
@@ -348,74 +311,130 @@ function ModelSelector({
   onModelChange: (model: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [models, setModels] = useState<DynamicModel[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [provider, setProvider] = useState<string>('openrouter');
   const { settings } = useAppStore();
-  const configuredProvider = (settings.provider || 'openrouter') as ProviderKey;
 
-  // Filter models based on the configured provider
-  // OpenRouter can access all models; other providers only see their own models
-  const MODEL_OPTIONS = configuredProvider === 'openrouter'
-    ? ALL_MODEL_OPTIONS.filter((m) => m.provider === 'openrouter')
-    : ALL_MODEL_OPTIONS.filter((m) => m.provider === configuredProvider);
+  const fetchModels = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/models');
+      if (res.ok) {
+        const data = await res.json();
+        setModels(data.models || []);
+        setProvider(data.provider || 'openrouter');
+      }
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const currentModel = MODEL_OPTIONS.find((m) => m.id === selectedModel) || MODEL_OPTIONS[0];
+  // Fetch models when popover opens
+  useEffect(() => {
+    if (open && models.length === 0) {
+      fetchModels();
+    }
+  }, [open, models.length, fetchModels]);
 
-  // Group models by provider (for OpenRouter, group as Free vs Paid)
-  const groupedModels = configuredProvider === 'openrouter'
+  // Also refresh when provider changes
+  useEffect(() => {
+    const configuredProvider = settings.provider || 'openrouter';
+    if (configuredProvider !== provider) {
+      setModels([]);
+    }
+  }, [settings.provider, provider]);
+
+  const currentModel = models.find((m) => m.id === selectedModel) || models[0];
+
+  // Group models: Free vs Paid (for OpenRouter), or by provider name
+  const groupedModels = provider === 'openrouter'
     ? (() => {
-        const free = MODEL_OPTIONS.filter((m) => m.id.includes(':free') || m.id === 'openrouter/auto');
-        const paid = MODEL_OPTIONS.filter((m) => !m.id.includes(':free') && m.id !== 'openrouter/auto');
-        const groups: Record<string, ModelOption[]> = {};
-        if (free.length) groups['Free Models'] = free;
-        if (paid.length) groups['Paid Models (via OpenRouter)'] = paid;
+        const auto = models.filter((m) => m.id === 'openrouter/auto');
+        const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');
+        const paid = models.filter((m) => !m.isFree);
+        const groups: Record<string, DynamicModel[]> = {};
+        if (auto.length) groups['⚡ Auto-Routing'] = auto;
+        if (free.length) groups['🆓 Free Models'] = free;
+        if (paid.length) groups['💎 Paid Models'] = paid;
         return groups;
       })()
-    : MODEL_OPTIONS.reduce<Record<string, ModelOption[]>>((acc, model) => {
-        if (!acc[model.provider]) acc[model.provider] = [];
-        acc[model.provider].push(model);
-        return acc;
-      }, {});
+    : { [provider.toUpperCase()]: models };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button className="flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-700/80 hover:text-zinc-100">
-          <span className="text-sm">{currentModel.icon}</span>
-          <span className="max-w-[120px] truncate">{currentModel.name}</span>
+          <Wifi className="size-3 text-emerald-400" />
+          <span className="max-w-[140px] truncate">{currentModel?.name || selectedModel}</span>
           <ChevronDown className="size-3 text-zinc-500" />
         </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-64 border-zinc-700 bg-zinc-800 p-1 shadow-xl"
+        className="w-72 border-zinc-700 bg-zinc-800 p-1 shadow-xl"
       >
+        {/* Header with refresh */}
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-zinc-700/50">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            {provider === 'openrouter' ? 'OpenRouter' : provider} Models
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="size-6 p-0 text-zinc-500 hover:text-zinc-300"
+            onClick={fetchModels}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`size-3 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+
         <div className="max-h-80 overflow-y-auto custom-scrollbar">
-          {Object.entries(groupedModels).map(([provider, models]) => (
-            <div key={provider}>
-              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                {models[0].providerName}
-              </div>
-              {models.map((model) => (
-                <button
-                  key={model.id}
-                  onClick={() => {
-                    onModelChange(model.id);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
-                    selectedModel === model.id
-                      ? 'bg-emerald-500/15 text-emerald-400'
-                      : 'text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-                  }`}
-                >
-                  <span className="text-sm">{model.icon}</span>
-                  <span className="flex-1 text-left">{model.name}</span>
-                  {selectedModel === model.id && (
-                    <Check className="size-3 text-emerald-400" />
-                  )}
-                </button>
-              ))}
+          {isLoading && models.length === 0 ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="size-4 animate-spin text-zinc-500" />
+              <span className="ml-2 text-xs text-zinc-500">Loading models...</span>
             </div>
-          ))}
+          ) : (
+            Object.entries(groupedModels).map(([group, groupModels]) => (
+              <div key={group}>
+                <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  {group} ({groupModels.length})
+                </div>
+                {groupModels.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => {
+                      onModelChange(model.id);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                      selectedModel === model.id
+                        ? 'bg-emerald-500/15 text-emerald-400'
+                        : 'text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+                    }`}
+                  >
+                    <span className="flex-1 text-left truncate">{model.name}</span>
+                    {model.isFree ? (
+                      <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400">
+                        FREE
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded bg-zinc-700/50 px-1.5 py-0.5 text-[9px] font-medium text-zinc-500">
+                        PAID
+                      </span>
+                    )}
+                    {selectedModel === model.id && (
+                      <Check className="size-3 shrink-0 text-emerald-400" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -456,6 +475,9 @@ function ChatHeader() {
     setSettings({ ...settings, model });
   }, [setSelectedModel, settings, setSettings]);
 
+  // Show connection status
+  const isConnected = !!(settings.apiKey);
+
   return (
     <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 backdrop-blur-sm">
       <div className="flex items-center gap-2 min-w-0">
@@ -466,12 +488,25 @@ function ChatHeader() {
           <span className="text-sm font-medium text-zinc-100 truncate">
             {currentConversation?.title ?? 'New Conversation'}
           </span>
-          {totalTokens !== undefined && totalTokens > 0 && (
-            <span className="flex items-center gap-1 text-[11px] text-zinc-500">
-              <Hash className="size-3" />
-              {totalTokens.toLocaleString()} tokens
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <span className="flex items-center gap-1 text-[11px] text-emerald-400/80">
+                <Wifi className="size-3" />
+                Connected
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[11px] text-red-400/80">
+                <WifiOff className="size-3" />
+                No API Key
+              </span>
+            )}
+            {totalTokens !== undefined && totalTokens > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-zinc-500">
+                <Hash className="size-3" />
+                {totalTokens.toLocaleString()} tokens
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -571,10 +606,12 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
 function MessageBubble({
   role,
   content,
+  model,
   onApplyCode,
 }: {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  model?: string;
   onApplyCode?: (code: string) => void;
 }) {
   const isUser = role === 'user';
@@ -603,13 +640,22 @@ function MessageBubble({
           isUser ? 'items-end' : 'items-start'
         } flex flex-col gap-1`}
       >
-        {/* Sender label */}
+        {/* Sender label with model info */}
         <span
           className={`text-[11px] font-medium ${
             isUser ? 'text-zinc-500' : 'text-emerald-400/80'
           }`}
         >
-          {isUser ? 'You' : 'CodeForge AI'}
+          {isUser ? 'You' : (
+            <>
+              CodeForge AI
+              {model && (
+                <span className="ml-1.5 text-zinc-600 font-normal">
+                  via {model}
+                </span>
+              )}
+            </>
+          )}
         </span>
 
         {/* Message body */}
@@ -737,7 +783,7 @@ function MessageInput({
         {isLoading && (
           <span className="flex items-center gap-1.5 text-[11px] text-emerald-400/80">
             <LoadingDots />
-            Streaming
+            Streaming from API
           </span>
         )}
       </div>
@@ -768,6 +814,7 @@ export default function ChatPanel() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef<string>('');
   const [streamingContent, setStreamingContent] = useState<string>('');
+  const [streamingModel, setStreamingModel] = useState<string>('');
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -812,6 +859,7 @@ export default function ChatPanel() {
       setIsChatLoading(true);
       streamingContentRef.current = '';
       setStreamingContent('');
+      setStreamingModel('');
 
       try {
         const conversationId = currentConversation?.id ?? userMessage.id;
@@ -852,6 +900,7 @@ export default function ChatPanel() {
 
           const decoder = new TextDecoder();
           let fullContent = '';
+          let lastModel = selectedModel;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -877,6 +926,10 @@ export default function ChatPanel() {
                     setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
                   }
+                  if (parsed.model) {
+                    lastModel = parsed.model;
+                    setStreamingModel(lastModel);
+                  }
                 } catch {
                   // Not valid JSON — ignore
                 }
@@ -890,7 +943,7 @@ export default function ChatPanel() {
             role: 'assistant' as const,
             content: fullContent || 'No response received.',
             tokens: Math.ceil(message.length / 4) + Math.ceil(fullContent.length / 4),
-            model: selectedModel,
+            model: lastModel,
             createdAt: new Date().toISOString(),
           };
           addMessageToConversation(assistantMessage);
@@ -916,7 +969,7 @@ export default function ChatPanel() {
               role: 'assistant' as const,
               content: streamingContentRef.current,
               tokens: Math.ceil(streamingContentRef.current.length / 4),
-              model: selectedModel,
+              model: streamingModel || selectedModel,
               createdAt: new Date().toISOString(),
             };
             addMessageToConversation(assistantMessage);
@@ -926,7 +979,7 @@ export default function ChatPanel() {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
             content:
-              'Sorry, I encountered an error processing your request. Please try again.',
+              'Sorry, I encountered an error processing your request. Please check your API key and try again.',
             createdAt: new Date().toISOString(),
           };
           addMessageToConversation(errorMessage);
@@ -935,6 +988,7 @@ export default function ChatPanel() {
       } finally {
         setIsChatLoading(false);
         setStreamingContent('');
+        setStreamingModel('');
         streamingContentRef.current = '';
         abortControllerRef.current = null;
       }
@@ -977,6 +1031,7 @@ export default function ChatPanel() {
                   key={msg.id}
                   role={msg.role}
                   content={msg.content}
+                  model={msg.model}
                   onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
                 />
               ))}
@@ -998,6 +1053,11 @@ export default function ChatPanel() {
                   <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
                     <span className="text-[11px] font-medium text-emerald-400/80">
                       CodeForge AI
+                      {streamingModel && (
+                        <span className="ml-1.5 text-zinc-600 font-normal">
+                          via {streamingModel}
+                        </span>
+                      )}
                     </span>
                     <div className="rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-2.5 text-sm leading-relaxed text-zinc-300">
                       <MarkdownRenderer content={streamingContent} onApplyCode={handleApplyCode} />
@@ -1027,7 +1087,7 @@ export default function ChatPanel() {
                     </span>
                     <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-zinc-800 px-4 py-3 text-sm text-zinc-400">
                       <Loader2 className="size-3.5 animate-spin text-emerald-500" />
-                      <span>Connecting</span>
+                      <span>Calling {selectedModel}...</span>
                       <LoadingDots />
                     </div>
                   </div>
