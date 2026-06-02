@@ -1,5 +1,14 @@
 import { create } from 'zustand';
 
+export interface FileAttachment {
+  id: string;
+  name: string;
+  type: string; // MIME type
+  size: number;
+  content: string; // base64 for images, text content for code files
+  isImage: boolean;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -7,6 +16,7 @@ export interface Message {
   tokens?: number;
   model?: string;
   responseTime?: number;
+  attachments?: FileAttachment[];
   createdAt: string;
 }
 

@@ -10,8 +10,7 @@ import {
   FolderOpen,
   Sparkles,
 } from 'lucide-react';
-import DesktopDownload from './DesktopDownload';
-import CloudSetup from './CloudSetup';
+
 import { useAppStore, type Project } from '@/store';
 import { useProjectState, useUIState, useChatState, useTaskState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
@@ -212,11 +211,7 @@ export default function TopBar() {
             </motion.div>
           )}
 
-          {/* Desktop download */}
-          <DesktopDownload />
 
-          {/* Cloud setup */}
-          <CloudSetup />
 
           {/* Settings button */}
           <Button

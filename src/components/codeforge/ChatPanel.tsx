@@ -44,8 +44,12 @@ import {
   RotateCcw,
   Settings,
   Download,
+  Paperclip,
+  X,
+  Image as ImageIcon,
+  FileText,
 } from 'lucide-react';
-import { useAppStore, type AgentType, type ProjectFile } from '@/store';
+import { useAppStore, type AgentType, type ProjectFile, type FileAttachment } from '@/store';
 import { useStore, useChatState, useFileState, useUIState, useProjectState } from '@/store/hooks';
 import { parseFilesFromResponse, type ParsedFile } from '@/lib/file-parser';
 import { toast } from 'sonner';
@@ -1576,6 +1580,7 @@ const MessageBubble = React.memo(function MessageBubble({
   content,
   model,
   responseTime,
+  attachments,
   onApplyCode,
   onFilesCreated,
   onRetry,
@@ -1584,6 +1589,7 @@ const MessageBubble = React.memo(function MessageBubble({
   content: string;
   model?: string;
   responseTime?: number;
+  attachments?: FileAttachment[];
   onApplyCode?: (code: string) => void;
   onFilesCreated?: (files: ProjectFile[]) => void;
   onRetry?: (originalMessage: string) => void;
@@ -1697,7 +1703,34 @@ const MessageBubble = React.memo(function MessageBubble({
           }`}
         >
           {isUser ? (
-            <p className="whitespace-pre-wrap">{content}</p>
+            <div>
+              {attachments && attachments.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {attachments.map((att) => (
+                    <div key={att.id} className="group relative overflow-hidden rounded-lg border border-zinc-600/50 bg-zinc-600/30">
+                      {att.isImage ? (
+                        <div className="relative">
+                          <img
+                            src={`data:${att.type};base64,${att.content}`}
+                            alt={att.name}
+                            className="max-h-48 max-w-full rounded-lg object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-3 py-2">
+                          <FileText className="size-4 text-emerald-400 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-zinc-200 truncate">{att.name}</p>
+                            <p className="text-[10px] text-zinc-400">{(att.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="whitespace-pre-wrap">{content}</p>
+            </div>
           ) : (
             <>
               {errorParts.map((part, idx) =>
@@ -1922,12 +1955,14 @@ function MessageInput({
   isLoading,
   onStop,
 }: {
-  onSend: (message: string) => void;
+  onSend: (message: string, attachments?: FileAttachment[]) => void;
   isLoading: boolean;
   onStop: () => void;
 }) {
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedAgent = useUIState(s => s.selectedAgent);
   const setSelectedAgent = useUIState(s => s.setSelectedAgent);
 
@@ -1939,12 +1974,86 @@ function MessageInput({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
+  // Supported file types
+  const ACCEPTED_TYPES = '.html,.htm,.css,.js,.jsx,.ts,.tsx,.py,.json,.xml,.svg,.md,.txt,.csv,.sql,.yaml,.yml,.toml,.ini,.cfg,.env,.sh,.bash,.zsh,.fish,.ps1,.bat,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.cs,.php,.swift,.kt,.dart,.lua,.r,.scala,.clj,.hs,.ex,.exs,.vue,.svelte,.astro,.scss,.less,.sass,.styl,.txt,.log,.conf,.gitignore,.dockerfile,.makefile,.cmake,.gradle,.properties,.proto,.graphql,.prisma,.wasm,.asm,.s,.v,.vhd,.tcl,.m,.mm,.pl,.pm,.t,.patch,.diff,.scss,.editorconfig,.eslintrc,.prettierrc,.babelrc,.tsconfig,.webpack,.rollup,.vite,.next.config,.vercel.json,.netlify.toml,.png,.jpg,.jpeg,.gif,.webp,.bmp,.ico,.svg';
+
+  const processFile = useCallback((file: File): Promise<FileAttachment> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const isImage = file.type.startsWith('image/');
+
+      if (isImage) {
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve({
+            id: crypto.randomUUID(),
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            content: base64,
+            isImage: true,
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      } else {
+        reader.onload = () => {
+          resolve({
+            id: crypto.randomUUID(),
+            name: file.name,
+            type: file.type || 'text/plain',
+            size: file.size,
+            content: reader.result as string,
+            isImage: false,
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsText(file);
+      }
+    });
+  }, []);
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const maxSize = 10 * 1024 * 1024; // 10MB per file
+    const newAttachments: FileAttachment[] = [];
+
+    for (const file of Array.from(files)) {
+      if (file.size > maxSize) {
+        toast.error(`File too large: ${file.name}`, { description: 'Maximum file size is 10MB' });
+        continue;
+      }
+      try {
+        const att = await processFile(file);
+        newAttachments.push(att);
+      } catch {
+        toast.error(`Failed to read: ${file.name}`);
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments(prev => [...prev, ...newAttachments]);
+    }
+
+    // Reset file input so the same file can be re-selected
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [processFile]);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  }, []);
+
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isLoading) return;
-    onSend(trimmed);
+    if ((!trimmed && attachments.length === 0) || isLoading) return;
+    onSend(trimmed || 'Please look at the attached file(s).', attachments.length > 0 ? attachments : undefined);
     setInput('');
+    setAttachments([]);
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -1958,8 +2067,115 @@ function MessageInput({
     }
   };
 
+  // Drag and drop support
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const maxSize = 10 * 1024 * 1024;
+    const newAttachments: FileAttachment[] = [];
+
+    for (const file of Array.from(files)) {
+      if (file.size > maxSize) {
+        toast.error(`File too large: ${file.name}`, { description: 'Maximum file size is 10MB' });
+        continue;
+      }
+      try {
+        const att = await processFile(file);
+        newAttachments.push(att);
+      } catch {
+        toast.error(`Failed to read: ${file.name}`);
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments(prev => [...prev, ...newAttachments]);
+      toast.success(`Added ${newAttachments.length} file(s)`);
+    }
+  }, [processFile]);
+
   return (
-    <div className="border-t border-zinc-800 bg-zinc-900/80 p-3 backdrop-blur-sm">
+    <div
+      className={`border-t bg-zinc-900/80 p-3 backdrop-blur-sm transition-colors ${isDragging ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-zinc-800'}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-900/80 backdrop-blur-sm rounded-lg"
+          >
+            <div className="flex flex-col items-center gap-2 text-emerald-400">
+              <Paperclip className="size-8" />
+              <span className="text-sm font-medium">Drop files here</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* File attachments preview */}
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {attachments.map((att) => (
+            <div
+              key={att.id}
+              className="group relative flex items-center gap-2 rounded-lg border border-zinc-700/60 bg-zinc-800/80 px-3 py-1.5 pr-8"
+            >
+              {att.isImage ? (
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="size-3.5 text-emerald-400 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    {att.content && (
+                      <img
+                        src={`data:${att.type};base64,${att.content}`}
+                        alt={att.name}
+                        className="size-8 rounded object-cover"
+                      />
+                    )}
+                    <span className="text-xs text-zinc-300 truncate max-w-[120px]">{att.name}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <FileText className="size-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-xs text-zinc-300 truncate max-w-[140px]">{att.name}</span>
+                </div>
+              )}
+              <span className="text-[10px] text-zinc-500">{(att.size / 1024).toFixed(1)}KB</span>
+              <button
+                onClick={() => removeAttachment(att.id)}
+                className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-zinc-700 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600 hover:text-white"
+              >
+                <X className="size-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Agent selector row — horizontal scrollable pills */}
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {(Object.entries(AGENT_CONFIG) as [AgentType, (typeof AGENT_CONFIG)[AgentType]][]).map(
@@ -1982,16 +2198,41 @@ function MessageInput({
 
       {/* Input row */}
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
+        {/* Attach file button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-9 shrink-0 text-zinc-500 hover:text-emerald-400"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+            >
+              <Paperclip className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Attach file</TooltipContent>
+        </Tooltip>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_TYPES}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
         <div className="relative flex-1">
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask CodeForge AI..."
+            placeholder={attachments.length > 0 ? "Add a message about the file(s)..." : "Ask CodeForge AI..."}
             disabled={isLoading}
             rows={1}
-            className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 pr-12 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 disabled:opacity-50"
+            className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 disabled:opacity-50"
           />
         </div>
 
@@ -2032,7 +2273,7 @@ function MessageInput({
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!input.trim()}
+                    disabled={!input.trim() && attachments.length === 0}
                     className="size-9 shrink-0 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40"
                   >
                     <Send className="size-4" />
@@ -2047,7 +2288,9 @@ function MessageInput({
 
       <div className="mt-1.5 flex items-center justify-between">
         <span className="text-[10px] text-zinc-600">
-          Enter to send, Shift+Enter for new line
+          {attachments.length > 0
+            ? `${attachments.length} file(s) attached · Enter to send`
+            : 'Enter to send, Shift+Enter for new line'}
         </span>
         {isLoading && (
           <span className="flex items-center gap-1.5 text-[11px] text-emerald-400/80">
@@ -2214,12 +2457,13 @@ export default function ChatPanel() {
   }, []);
 
   const handleSend = useCallback(
-    async (message: string) => {
-      // Create user message
+    async (message: string, attachments?: FileAttachment[]) => {
+      // Create user message with attachments
       const userMessage = {
         id: crypto.randomUUID(),
         role: 'user' as const,
         content: message,
+        attachments,
         createdAt: new Date().toISOString(),
       };
 
@@ -2268,11 +2512,25 @@ export default function ChatPanel() {
         // Create abort controller for cancellation
         abortControllerRef.current = new AbortController();
 
+        // Build the user message content with file context
+        let enrichedMessage = message;
+        if (attachments && attachments.length > 0) {
+          const fileContexts: string[] = [];
+          for (const att of attachments) {
+            if (att.isImage) {
+              fileContexts.push(`[Attached Image: ${att.name}]`);
+            } else {
+              fileContexts.push(`[Attached File: ${att.name}]\n\`\`\`\n${att.content}\n\`\`\``);
+            }
+          }
+          enrichedMessage = fileContexts.join('\n\n') + '\n\n' + message;
+        }
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message,
+            message: enrichedMessage,
             conversationId,
             projectId: currentProject?.id,
             agent: selectedAgent,
@@ -2280,6 +2538,13 @@ export default function ChatPanel() {
             history,
             stream: true,
             settings: useAppStore.getState().settings,
+            attachments: attachments?.map(a => ({
+              id: a.id,
+              name: a.name,
+              type: a.type,
+              size: a.size,
+              isImage: a.isImage,
+            })),
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -2608,6 +2873,7 @@ export default function ChatPanel() {
           content={msg.content}
           model={msg.model}
           responseTime={msg.responseTime}
+          attachments={msg.attachments}
           onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
           onFilesCreated={msg.role === 'assistant' ? handleFilesCreated : undefined}
           onRetry={msg.role === 'assistant' ? handleSend : undefined}

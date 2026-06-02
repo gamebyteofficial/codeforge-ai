@@ -677,3 +677,40 @@ Stage Summary:
   - DATABASE_URL can stay as local SQLite (used by Prisma CLI only)
 - Vercel auto-deploys from GitHub but needs env vars added manually in dashboard
 - All API routes work unchanged with the new DbClient interface
+
+---
+Task ID: 11
+Agent: Main Agent
+Task: Add file upload to chat + Remove Desktop App and Cloud sections
+
+Work Log:
+- Removed Desktop App button and Cloud Setup button from TopBar.tsx (removed imports + JSX)
+- Deleted src/components/codeforge/DesktopDownload.tsx (538 lines)
+- Deleted src/components/codeforge/CloudSetup.tsx (880 lines)
+- Deleted src/app/api/cloud-config/route.ts (cloud deployment config API)
+- Added FileAttachment interface to store/index.ts (id, name, type, size, content, isImage)
+- Added attachments?: FileAttachment[] field to Message interface
+- Completely rewrote MessageInput component in ChatPanel.tsx:
+  - Added 📎 Paperclip attach button with hidden file input
+  - Supports 80+ file types (HTML, CSS, JS, TS, Python, JSON, images, configs, etc.)
+  - Drag-and-drop file upload with visual overlay
+  - File preview chips showing name, size, thumbnail (for images), and remove button
+  - 10MB per-file size limit with toast error for oversized files
+  - Auto-generates "Please look at the attached file(s)." message when no text is entered
+  - Send button enables when files are attached (even without text)
+- Updated MessageBubble component to display file attachments:
+  - Images shown as thumbnails with proper dimensions
+  - Code/text files shown with FileText icon, name, and size
+- Updated handleSend to accept FileAttachment[] and enrich the message with file content
+- File content is injected into the AI message as code blocks for text files, or [Attached Image: name] for images
+- Updated renderedMessages to pass msg.attachments to MessageBubble
+- Added new lucide-react icons: Paperclip, X, Image as ImageIcon, FileText
+- Lint check passes with zero errors in src/ directory
+- Dev server running and healthy
+
+Stage Summary:
+- Desktop App and Cloud sections completely removed from the UI
+- File upload fully functional: click 📎 or drag-and-drop files into chat
+- Supports HTML, CSS, JS, Python, JSON, images, and 80+ other file types
+- Files are displayed as attachments in chat messages and their content is sent to the AI
+- Images show thumbnail previews in both the input area and message bubbles
