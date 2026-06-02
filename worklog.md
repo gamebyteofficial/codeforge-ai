@@ -651,3 +651,29 @@ Stage Summary:
 - All API routes work without modification thanks to the `DbClient` interface
 - Boolean fields properly converted between SQLite integers and JavaScript booleans
 - Hot-reload works correctly: connection reused, wrapper recreated
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Set up Turso cloud database for persistent storage on Vercel
+
+Work Log:
+- Installed Turso CLI and created cloud database at aws-ap-south-1 (Mumbai)
+- Database: codeforge-abdulrehman23.aws-ap-south-1.turso.io
+- Installed @libsql/client and @prisma/adapter-libsql
+- Discovered Prisma adapter v7 is incompatible with Prisma v6.19.2
+- Downgraded to adapter v6.19.3 but still got "URL_INVALID" errors
+- Solution: Created dual-mode DbClient with direct libsql for Turso + Prisma for local SQLite
+- Pushed schema to Turso via libsql client (8 tables + 1 unique index)
+- Tested: Projects and settings persist in Turso cloud database
+- Committed and pushed to GitHub
+- Vercel deployment requires adding env vars manually (token has limited scope)
+
+Stage Summary:
+- Turso cloud database is WORKING - data persists across server restarts
+- Environment variables needed for Vercel:
+  - TURSO_DATABASE_URL=libsql://codeforge-abdulrehman23.aws-ap-south-1.turso.io
+  - TURSO_AUTH_TOKEN=(database-specific token, 267 chars)
+  - DATABASE_URL can stay as local SQLite (used by Prisma CLI only)
+- Vercel auto-deploys from GitHub but needs env vars added manually in dashboard
+- All API routes work unchanged with the new DbClient interface
