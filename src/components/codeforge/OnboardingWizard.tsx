@@ -133,6 +133,11 @@ const slideVariants = {
   }),
 };
 
+// Fallback models when API fetch fails
+const FALLBACK_MODELS: DynamicModel[] = [
+  { id: 'openrouter/auto', name: 'Auto (Best Available)', provider: 'openrouter', isFree: true },
+];
+
 // ─── OnboardingWizard Component ──────────────────────────────────────────────
 
 export default function OnboardingWizard() {
@@ -157,6 +162,9 @@ export default function OnboardingWizard() {
 
   // Step 2 state
   const [model, setModel] = useState('openrouter/auto');
+
+  // Ensure model always has a fallback
+  const effectiveModel = model || 'openrouter/auto';
   const [models, setModels] = useState<DynamicModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [temperature, setTemperature] = useState(0.7);
@@ -260,8 +268,13 @@ export default function OnboardingWizard() {
       }
     } catch (err) {
       console.error('Failed to fetch models:', err);
+      // Set fallback models so the user can still proceed
+      setModels(FALLBACK_MODELS);
+      setModel('openrouter/auto');
     } finally {
       setIsLoadingModels(false);
+      // Always ensure a default model is set even if fetch fails
+      setModel((prev) => prev || 'openrouter/auto');
     }
   }, [provider1, apiKey1]);
 
@@ -339,7 +352,7 @@ export default function OnboardingWizard() {
         [`${provider1}_apiKey`]: apiKey1,
         [`${provider2}_apiKey`]: apiKey2,
         apiKey: apiKey1, // Legacy compat
-        model,
+        model: effectiveModel,
         temperature: String(temperature),
         maxTokens: String(maxTokens),
       };
@@ -353,7 +366,7 @@ export default function OnboardingWizard() {
       }
       // Always ensure these keys exist even if empty
       cleanSettings.provider = provider1;
-      cleanSettings.model = model;
+      cleanSettings.model = effectiveModel;
       cleanSettings.apiKey = apiKey1;
 
       const res = await fetch('/api/settings', {
@@ -364,10 +377,10 @@ export default function OnboardingWizard() {
 
       if (res.ok) {
         setSettings(cleanSettings);
-        setSelectedModel(model);
+        setSelectedModel(effectiveModel);
         setIsOnboarded(true);
         toast.success('Setup complete!', {
-          description: `You're all set with ${PROVIDERS[provider1].name} — ${model}`,
+          description: `You're all set with ${PROVIDERS[provider1].name} — ${effectiveModel}`,
         });
       } else {
         const errorData = await res.json().catch(() => ({}));
@@ -496,7 +509,7 @@ export default function OnboardingWizard() {
               >
                 <Step3ModelSelection
                   provider={provider1}
-                  model={model}
+                  model={effectiveModel}
                   models={models}
                   isLoadingModels={isLoadingModels}
                   temperature={temperature}
