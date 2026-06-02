@@ -2316,6 +2316,22 @@ export default function ChatPanel() {
           // SSE line buffer — prevents losing tokens split across TCP chunks
           let sseBuffer = '';
 
+          // Batch React state updates with requestAnimationFrame to reduce re-renders.
+          // Without batching, setStreamingContent fires on every single token (~100/sec),
+          // causing a React re-render for each one. With rAF, we render at most once per
+          // animation frame (~60/sec), making the UI feel much smoother.
+          let pendingRender = false;
+          const scheduleRender = () => {
+            if (!pendingRender) {
+              pendingRender = true;
+              requestAnimationFrame(() => {
+                setStreamingContent(streamingContentRef.current);
+                setStreamingModel(lastModel);
+                pendingRender = false;
+              });
+            }
+          };
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -2336,21 +2352,24 @@ export default function ChatPanel() {
                   const parsed = JSON.parse(data);
                   if (parsed.error) {
                     fullContent += `\n\n⚠️ Error: ${parsed.error}`;
-                    setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
                     // Track that we saw an API error during streaming
                     streamingHadErrorRef.current = parsed.error;
+                    // Flush error content immediately for user feedback
+                    setStreamingContent(fullContent);
                   } else if (parsed.content) {
                     fullContent += parsed.content;
-                    setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
+
+                    // Batch the React re-render via rAF instead of calling setStreamingContent on every token
+                    scheduleRender();
 
                     // Throttled preview update during streaming
                     throttledPreviewUpdate(fullContent);
                   }
                   if (parsed.model) {
                     lastModel = parsed.model;
-                    setStreamingModel(lastModel);
+                    // Model update is batched with content in scheduleRender()
                   }
                 } catch {
                   // Not valid JSON — ignore (may be partial)
@@ -2367,18 +2386,22 @@ export default function ChatPanel() {
                 const parsed = JSON.parse(trimmed.slice(6));
                 if (parsed.content) {
                   fullContent += parsed.content;
-                  setStreamingContent(fullContent);
                   streamingContentRef.current = fullContent;
+                  scheduleRender();
                 }
                 if (parsed.model) {
                   lastModel = parsed.model;
-                  setStreamingModel(lastModel);
+                  // Model update is batched with content in scheduleRender()
                 }
               } catch {
                 // Incomplete JSON — ignore
               }
             }
           }
+
+          // Flush final streaming state to ensure the last frame is rendered
+          setStreamingContent(fullContent);
+          setStreamingModel(lastModel);
 
           // Final preview extraction after streaming completes
           flushPreviewUpdate(fullContent);

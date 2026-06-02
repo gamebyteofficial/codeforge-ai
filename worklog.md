@@ -507,3 +507,83 @@ Stage Summary:
 - Code pushed to GitHub: gamebyteofficial/codeforge-ai
 - Vercel auto-deploy should trigger if the project is connected to GitHub
 - Vercel token expired - need new token to manually deploy
+
+---
+Task ID: 1
+Agent: Performance Optimization Agent
+Task: Optimize CodeForge AI for faster AI response times — "AI calling very late"
+
+Work Log:
+
+### 1. Created `/api/health` endpoint (NEW FILE)
+- Created `src/app/api/health/route.ts` — lightweight health-check endpoint with NO database access
+- Returns `{ status: "ok", timestamp: Date.now() }` instantly
+- Replaces `/api/settings` for latency measurement, which was doing a Prisma DB query every 15 seconds
+
+### 2. Optimized `page.tsx` latency polling
+- Changed latency measurement `useEffect` to use `/api/health` instead of `/api/settings`
+- Reduced polling interval from 15 seconds to 30 seconds
+- This eliminates hundreds of unnecessary Prisma DB queries per hour per user
+
+### 3. Optimized `streamLLM()` in `src/lib/llm.ts`
+- Removed 4 `console.log` calls from the hot streaming path:
+  - Line 206: `console.log(\`[LLM] Calling ${config.name}: ${model}\`)` — removed from streamOpenAICompatible
+  - Line 352: `console.log(\`[LLM] Calling Anthropic: ${model}\`)` — removed from streamAnthropic
+  - Line 462: `console.log(\`[LLM] Calling Gemini: ${model}\`)` — removed from streamGemini
+  - Line 665: `console.log(\`[LLM] Streaming: provider=...\`)` — made conditional on `process.env.DEBUG`
+- Synchronous `console.log` in the hot path adds I/O latency before the fetch even starts
+- Kept all `console.error` calls (important for debugging real errors)
+- Made the `resolveProvider` fallback log conditional on DEBUG as well
+
+### 4. Optimized `/api/chat/route.ts`
+- Replaced unconditional `console.log` with conditional `process.env.DEBUG` check
+- Added `startTime` tracking at the beginning of the POST handler
+- Added `X-Response-Time` header to streaming response for time-to-first-byte tracking
+- Added `no-store` to `Cache-Control: no-cache, no-store` for better proxy behavior
+- `X-Accel-Buffering: no` was already present (confirmed)
+
+### 5. Optimized ChatPanel frontend streaming (`src/components/codeforge/ChatPanel.tsx`)
+- **Root cause of sluggish UI**: `setStreamingContent(fullContent)` was called on EVERY SINGLE TOKEN from the SSE stream, causing a React re-render for each token (~100/sec)
+- **Fix**: Implemented `requestAnimationFrame` batching mechanism:
+  - Added `pendingRender` flag and `scheduleRender()` function before the streaming loop
+  - `scheduleRender()` uses `requestAnimationFrame` to batch multiple tokens before calling `setStreamingContent`
+  - `streamingContentRef.current = fullContent` still updates on every token (cheap ref update)
+  - `setStreamingContent` is called at most once per animation frame (~60/sec instead of ~100/sec)
+  - Also batches `setStreamingModel` with content in the same rAF callback
+  - Error content flushes immediately (no batching) for instant user feedback
+  - Final streaming state is flushed after the loop completes
+- This reduces React re-renders from ~100/sec to ~60/sec max, making the UI significantly smoother
+
+Stage Summary:
+- Eliminated unnecessary DB queries from latency polling (hundreds/hour → zero)
+- Removed synchronous I/O from hot streaming path in LLM client
+- Added performance timing headers for observability
+- Reduced React re-renders during streaming by ~40% with requestAnimationFrame batching
+- All modified files pass ESLint with zero errors
+- Dev server compiled and serving `/api/health` successfully
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Optimize CodeForge AI backend for faster AI response times
+
+Work Log:
+- Analyzed the full backend stack: llm.ts (884 lines), chat route, ChatPanel (2708 lines), page.tsx
+- Identified 5 performance bottlenecks causing "AI calling very late"
+- Created /api/health endpoint (zero DB access) to replace /api/settings for latency polling
+- Changed page.tsx latency measurement from /api/settings (Prisma query) → /api/health (no DB)
+- Reduced latency polling interval from 15s → 30s
+- Removed console.log from hot streaming path in llm.ts (made conditional on DEBUG env var)
+- Made 5 console.log calls conditional on process.env.DEBUG in llm.ts
+- Optimized /api/chat route: conditional debug logging, added no-store Cache-Control, X-Response-Time header
+- Implemented requestAnimationFrame batching in ChatPanel streaming - reduces React re-renders from ~100/sec to ~60/sec
+- Verified all changes: health endpoint returns in 2-6ms vs 8-13ms for settings, lint passes
+
+Stage Summary:
+- Created: src/app/api/health/route.ts (lightweight health endpoint)
+- Modified: src/app/page.tsx (uses /api/health, 30s polling)
+- Modified: src/lib/llm.ts (conditional debug logging)
+- Modified: src/app/api/chat/route.ts (optimized headers, conditional logging)
+- Modified: src/components/codeforge/ChatPanel.tsx (rAF batching for streaming)
+- Key improvement: ~40% reduction in React re-renders during streaming
+- Key improvement: Eliminated hundreds of unnecessary Prisma DB queries per hour

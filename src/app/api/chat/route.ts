@@ -111,6 +111,7 @@ CRITICAL RULES:
 Be concise but thorough. Explain your reasoning when suggesting changes.`;
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   try {
     const body = await req.json();
     const {
@@ -197,7 +198,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log(`[Chat API] model=${selectedModel}, agent=${agent || 'default'}, fastPath=${hasClientSettings}`);
+    if (process.env.DEBUG) {
+      console.log(`[Chat API] model=${selectedModel}, agent=${agent || 'default'}, fastPath=${hasClientSettings}`);
+    }
 
     if (shouldStream) {
       // ─── Streaming Response ───────────────────────────────────────────
@@ -268,12 +271,15 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      const ttfb = Date.now() - startTime;
+
       return new Response(stream, {
         headers: {
           'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-store',
           'Connection': 'keep-alive',
           'X-Accel-Buffering': 'no', // Disable nginx buffering for faster SSE
+          'X-Response-Time': `${ttfb}ms`,
         },
       });
     }

@@ -203,8 +203,6 @@ async function* streamOpenAICompatible(
     stream: true,
   });
 
-  console.log(`[LLM] Calling ${config.name}: ${model}`);
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
 
@@ -254,7 +252,7 @@ async function* streamOpenAICompatible(
 
     if (model !== 'openrouter/auto' && config.extraHeaders && (isModelUnavailable || isRateLimited)) {
       const reason = isRateLimited ? 'rate limited' : 'currently unavailable';
-      console.log(`[LLM] Model "${model}" ${reason}. Auto-retrying with openrouter/auto...`);
+      if (process.env.DEBUG) console.log(`[LLM] Model "${model}" ${reason}. Auto-retrying with openrouter/auto...`);
       yield { content: `⚠️ Model "${model}" is ${reason}. Auto-switching to openrouter/auto...\n\n`, done: false };
       yield* streamOpenAICompatible(config, apiKey, 'openrouter/auto', messages, temperature, maxTokens);
       return;
@@ -348,8 +346,6 @@ async function* streamAnthropic(
     messages: chatMessages,
     stream: true,
   });
-
-  console.log(`[LLM] Calling Anthropic: ${model}`);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
@@ -458,8 +454,6 @@ async function* streamGemini(
       maxOutputTokens: maxTokens,
     },
   });
-
-  console.log(`[LLM] Calling Gemini: ${model}`);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
@@ -588,7 +582,7 @@ function resolveProvider(settings: Record<string, string>): ResolvedProvider | n
     const fallbackConfig = PROVIDER_CONFIGS[fallbackProvider];
     const fallbackKey = getApiKeyForProvider(settings, fallbackProvider);
     if (fallbackKey && fallbackConfig) {
-      console.log(`[LLM] Primary provider "${primaryProvider}" has no API key. Falling back to ${slotName} "${fallbackProvider}".`);
+      if (process.env.DEBUG) console.log(`[LLM] Primary provider "${primaryProvider}" has no API key. Falling back to ${slotName} "${fallbackProvider}".`);
       return { provider: fallbackProvider, apiKey: fallbackKey, config: fallbackConfig, isFallback: true };
     }
   }
@@ -651,7 +645,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
       actualModel.startsWith('openrouter/') && provider === 'openrouter';
     if (!modelBelongsToProvider) {
       const fallbackModel = config.testModel || config.models[0] || 'openrouter/auto';
-      console.log(`[LLM] Model "${actualModel}" not available on "${provider}". Using "${fallbackModel}".`);
+      if (process.env.DEBUG) console.log(`[LLM] Model "${actualModel}" not available on "${provider}". Using "${fallbackModel}".`);
       yield { content: `⚠️ Switched to ${config.name} (${fallbackModel}) as fallback.\n\n`, done: false };
       actualModel = fallbackModel;
     }
@@ -662,7 +656,9 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
     return;
   }
 
-  console.log(`[LLM] Streaming: provider=${provider}, model=${actualModel}, fallback=${isFallback}`);
+  if (process.env.DEBUG) {
+    console.log(`[LLM] Streaming: provider=${provider}, model=${actualModel}, fallback=${isFallback}`);
+  }
 
   let primaryError: string | null = null;
 
@@ -680,7 +676,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
     primaryError = errorMsg;
 
     if (provider === 'openrouter' && actualModel !== 'openrouter/auto') {
-      console.log(`[LLM] Auto-retrying with openrouter/auto...`);
+      if (process.env.DEBUG) console.log(`[LLM] Auto-retrying with openrouter/auto...`);
       yield { content: `⚠️ Model "${actualModel}" failed. Auto-switching to openrouter/auto...\n\n`, done: false };
       try {
         yield* streamOpenAICompatible(config, apiKey, 'openrouter/auto', messages, temperature, maxTokens);
@@ -698,7 +694,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
         const secondaryKey = getApiKeyForProvider(settings, secondaryProvider);
         if (secondaryKey && secondaryConfig) {
           const fallbackModel = secondaryConfig.testModel || secondaryConfig.models[0] || 'openrouter/auto';
-          console.log(`[LLM] Primary failed. Retrying with secondary "${secondaryProvider}" model "${fallbackModel}"...`);
+          if (process.env.DEBUG) console.log(`[LLM] Primary failed. Retrying with secondary "${secondaryProvider}" model "${fallbackModel}"...`);
           yield { content: `⚠️ ${config.name} failed. Switching to ${secondaryConfig.name}...\n\n`, done: false };
           try {
             if (secondaryConfig.anthropicFormat) {

@@ -89,14 +89,14 @@ export default function Home() {
   const [latencyStatus, setLatencyStatus] = useState<LatencyStatus>('good');
   const lastLatencyRef = useRef<number>(0);
 
-  // Measure latency periodically by pinging the settings API
+  // Measure latency periodically using lightweight /api/health (no DB access)
   useEffect(() => {
     if (!isOnboarded) return;
 
     const measureLatency = async () => {
       try {
         const start = performance.now();
-        const res = await fetch('/api/settings');
+        await fetch('/api/health');
         const elapsed = performance.now() - start;
         lastLatencyRef.current = elapsed;
 
@@ -109,7 +109,7 @@ export default function Home() {
     };
 
     measureLatency();
-    const interval = setInterval(measureLatency, 15000);
+    const interval = setInterval(measureLatency, 30000);
     return () => clearInterval(interval);
   }, [isOnboarded]);
 
