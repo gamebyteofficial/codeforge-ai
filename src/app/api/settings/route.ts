@@ -11,8 +11,9 @@ export async function GET() {
     });
     return NextResponse.json({ settings: settingsMap });
   } catch (error) {
-    console.error('Failed to fetch settings:', error);
-    return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
+    // Database unavailable (e.g., Vercel serverless with SQLite)
+    console.warn('Settings GET: Database unavailable, returning empty settings');
+    return NextResponse.json({ settings: {} });
   }
 }
 
@@ -58,25 +59,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Save settings
-    // Filter out any non-string values to prevent DB errors
-    const cleanEntries = Object.entries(settings).filter(
-      ([, value]) => value !== undefined && value !== null
-    );
-    
-    const operations = cleanEntries.map(([key, value]) =>
-      db.setting.upsert({
-        where: { key },
-        update: { value: String(value) },
-        create: { key, value: String(value) },
-      })
-    );
+    // Save settings — handle DB failures gracefully
+    try {
+      // Filter out any non-string values to prevent DB errors
+      const cleanEntries = Object.entries(settings).filter(
+        ([, value]) => value !== undefined && value !== null
+      );
+      
+      const operations = cleanEntries.map(([key, value]) =>
+        db.setting.upsert({
+          where: { key },
+          update: { value: String(value) },
+          create: { key, value: String(value) },
+        })
+      );
 
-    await Promise.all(operations);
+      await Promise.all(operations);
+    } catch (dbError) {
+      // Database unavailable — settings were already saved to localStorage by the client
+      console.warn('Settings POST: Database unavailable, settings saved client-side only');
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to save settings:', error);
-    return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+    // Still return success since client has localStorage backup
+    return NextResponse.json({ success: true, warning: 'Server storage unavailable' });
   }
 }

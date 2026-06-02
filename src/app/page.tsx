@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useAppStore, type SidebarTab } from '@/store';
 import { useUIState, useStore, useFileState, usePreviewState } from '@/store/hooks';
+import { loadSettingsFromLocal, isOnboardedLocal } from '@/lib/localSettings';
 import {
   Tooltip,
   TooltipContent,
@@ -197,6 +198,20 @@ export default function Home() {
   // --- Check if user has already completed onboarding ---
   useEffect(() => {
     const checkOnboarding = async () => {
+      // Check localStorage first (works everywhere, including Vercel)
+      if (isOnboardedLocal()) {
+        const localSettings = loadSettingsFromLocal();
+        if (localSettings) {
+          setSettings(localSettings);
+          if (localSettings.model) {
+            setSelectedModel(localSettings.model);
+          }
+        }
+        setIsOnboarded(true);
+        return;
+      }
+
+      // Fall back to API (for users who originally set up with DB)
       try {
         const res = await fetch('/api/settings');
         if (res.ok) {

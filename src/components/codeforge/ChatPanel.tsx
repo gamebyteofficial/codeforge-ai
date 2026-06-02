@@ -2279,6 +2279,7 @@ export default function ChatPanel() {
             model: selectedModel,
             history,
             stream: true,
+            settings: useAppStore.getState().settings,
           }),
           signal: abortControllerRef.current.signal,
         });

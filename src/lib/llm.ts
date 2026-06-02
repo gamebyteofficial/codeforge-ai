@@ -156,10 +156,15 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
 // ─── Settings Helper ─────────────────────────────────────────────────────────
 
 async function getUserSettings(): Promise<Record<string, string>> {
-  const settings = await db.setting.findMany();
-  const map: Record<string, string> = {};
-  settings.forEach((s) => { map[s.key] = s.value; });
-  return map;
+  try {
+    const settings = await db.setting.findMany();
+    const map: Record<string, string> = {};
+    settings.forEach((s) => { map[s.key] = s.value; });
+    return map;
+  } catch {
+    // Database unavailable (e.g., Vercel serverless with SQLite)
+    return {};
+  }
 }
 
 // ─── Stream Chunk Type ───────────────────────────────────────────────────────
@@ -588,6 +593,8 @@ export interface LLMCallOptions {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  /** Client-provided settings (used as fallback when DB is unavailable) */
+  clientSettings?: Record<string, string>;
 }
 
 /**
@@ -646,10 +653,25 @@ function resolveProvider(settings: Record<string, string>): ResolvedProvider | n
 }
 
 export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<StreamChunk> {
-  const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
+  const { model, messages, temperature = 0.7, maxTokens = 4096, clientSettings } = options;
 
   // ── Step 1: Resolve provider and API key from settings ──
-  const settings = await getUserSettings();
+  let settings = await getUserSettings();
+
+  // Merge client-provided settings if DB is empty
+  if (clientSettings && Object.keys(clientSettings).length > 0) {
+    if (Object.keys(settings).length === 0) {
+      settings = { ...clientSettings };
+    } else {
+      // DB settings take priority, client settings fill gaps
+      for (const [key, value] of Object.entries(clientSettings)) {
+        if (!settings[key] && value) {
+          settings[key] = value;
+        }
+      }
+    }
+  }
+
   const resolved = resolveProvider(settings);
 
   if (!resolved) {

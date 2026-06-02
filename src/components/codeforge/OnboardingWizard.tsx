@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { saveSettings, markOnboarded, loadSettingsFromLocal, isOnboardedLocal } from '@/lib/localSettings';
 import {
   Select,
   SelectContent,
@@ -208,31 +209,27 @@ export default function OnboardingWizard() {
         maxTokens: '4096',
       };
 
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: minimalSettings }),
-      });
+      // Save to localStorage first (always works), then try API
+      await saveSettings(minimalSettings);
+      markOnboarded();
 
-      if (res.ok) {
-        setSettings(minimalSettings);
-        setSelectedModel('openrouter/auto');
-        setIsOnboarded(true);
-        toast.info('Skipped setup', {
-          description: 'You can add API keys later in ⚙️ Settings',
-        });
-      } else {
-        // Even if save fails, let the user in
-        setSettings(minimalSettings);
-        setSelectedModel('openrouter/auto');
-        setIsOnboarded(true);
-        toast.info('Skipped setup', {
-          description: 'You can add API keys later in ⚙️ Settings',
-        });
-      }
+      setSettings(minimalSettings);
+      setSelectedModel('openrouter/auto');
+      setIsOnboarded(true);
+      toast.info('Skipped setup', {
+        description: 'You can add API keys later in ⚙️ Settings',
+      });
     } catch {
-      // Even on network error, let the user in
-      setSettings({ provider: provider1, provider2, model: 'openrouter/auto', apiKey: 'skipped' });
+      // Even on error, let the user in with localStorage
+      const minimalSettings: Record<string, string> = {
+        provider: provider1,
+        provider2,
+        model: 'openrouter/auto',
+        apiKey: 'skipped',
+      };
+      saveSettings(minimalSettings, true);
+      markOnboarded();
+      setSettings(minimalSettings);
       setSelectedModel('openrouter/auto');
       setIsOnboarded(true);
       toast.info('Skipped setup', {
@@ -247,23 +244,24 @@ export default function OnboardingWizard() {
   const fetchModels = useCallback(async () => {
     setIsLoadingModels(true);
     try {
+      // Save settings temporarily so the models API knows the provider
       const perProviderKey = `${provider1}_apiKey`;
-      const tempRes = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: { provider: provider1, [perProviderKey]: apiKey1, apiKey: apiKey1 } }),
-      });
+      const tempSettings: Record<string, string> = {
+        provider: provider1,
+        [perProviderKey]: apiKey1,
+        apiKey: apiKey1,
+      };
+      await saveSettings(tempSettings);
 
-      if (tempRes.ok) {
-        const modelsRes = await fetch('/api/models');
-        if (modelsRes.ok) {
-          const data = await modelsRes.json();
-          const fetchedModels: DynamicModel[] = data.models || [];
-          setModels(fetchedModels);
-          if (fetchedModels.length > 0) {
-            const defaultModel = fetchedModels.find((m) => m.id === 'openrouter/auto') || fetchedModels[0];
-            setModel(defaultModel.id);
-          }
+      // Pass provider as query param for when DB is unavailable
+      const modelsRes = await fetch(`/api/models?provider=${provider1}`);
+      if (modelsRes.ok) {
+        const data = await modelsRes.json();
+        const fetchedModels: DynamicModel[] = data.models || [];
+        setModels(fetchedModels);
+        if (fetchedModels.length > 0) {
+          const defaultModel = fetchedModels.find((m) => m.id === 'openrouter/auto') || fetchedModels[0];
+          setModel(defaultModel.id);
         }
       }
     } catch (err) {
@@ -367,30 +365,41 @@ export default function OnboardingWizard() {
       // Always ensure these keys exist even if empty
       cleanSettings.provider = provider1;
       cleanSettings.model = effectiveModel;
-      cleanSettings.apiKey = apiKey1;
+      if (apiKey1) cleanSettings.apiKey = apiKey1;
 
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: cleanSettings }),
-      });
+      // Save to localStorage first (always works), then try API as best-effort
+      const result = await saveSettings(cleanSettings);
+      markOnboarded();
 
-      if (res.ok) {
-        setSettings(cleanSettings);
-        setSelectedModel(effectiveModel);
-        setIsOnboarded(true);
+      // Always proceed — localStorage is the source of truth
+      setSettings(cleanSettings);
+      setSelectedModel(effectiveModel);
+      setIsOnboarded(true);
+
+      if (result.apiSaved) {
         toast.success('Setup complete!', {
           description: `You're all set with ${PROVIDERS[provider1].name} — ${effectiveModel}`,
         });
       } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error('Failed to save settings', {
-          description: errorData.error || `Server error (${res.status})`,
+        toast.success('Setup complete!', {
+          description: `You're all set with ${PROVIDERS[provider1].name} — ${effectiveModel}`,
         });
       }
     } catch (err) {
-      toast.error('Failed to save settings', {
-        description: err instanceof Error ? err.message : 'Network error — check your connection',
+      // Even on error, save to localStorage and proceed
+      const fallbackSettings: Record<string, string> = {
+        provider: provider1,
+        provider2,
+        model: effectiveModel,
+        apiKey: apiKey1,
+      };
+      saveSettings(fallbackSettings, true);
+      markOnboarded();
+      setSettings(fallbackSettings);
+      setSelectedModel(effectiveModel);
+      setIsOnboarded(true);
+      toast.success('Setup complete!', {
+        description: `You're all set — settings saved locally`,
       });
     } finally {
       setIsSaving(false);

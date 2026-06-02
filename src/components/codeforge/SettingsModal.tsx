@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useAppStore } from '@/store';
 import { useUIState, useStore } from '@/store/hooks';
+import { saveSettings, loadSettingsFromLocal, saveSettingsToLocal, markOnboarded } from '@/lib/localSettings';
 import {
   Eye,
   EyeOff,
@@ -317,6 +318,17 @@ export default function SettingsModal() {
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Check localStorage first (works everywhere, including Vercel)
+      const localData = loadSettingsFromLocal();
+      if (localData && Object.keys(localData).length > 0) {
+        const merged = { ...DEFAULT_SETTINGS, ...localData };
+        setLocalSettings(merged);
+        setSettings(merged);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fall back to API
       const res = await fetch('/api/settings');
       if (res.ok) {
         const data = await res.json();
@@ -324,6 +336,8 @@ export default function SettingsModal() {
           const merged = { ...DEFAULT_SETTINGS, ...data.settings };
           setLocalSettings(merged);
           setSettings(merged);
+          // Cache to localStorage
+          saveSettingsToLocal(merged);
         } else {
           setLocalSettings({ ...DEFAULT_SETTINGS, ...settings });
         }
@@ -342,13 +356,10 @@ export default function SettingsModal() {
     setIsLoadingModels(true);
     try {
       // Save the current provider temporarily so /api/models reads it
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: localSettings }),
-      });
+      await saveSettings(localSettings);
 
-      const res = await fetch('/api/models');
+      // Pass provider as query param for when DB is unavailable
+      const res = await fetch(`/api/models?provider=${localSettings.provider || 'openrouter'}`);
       if (res.ok) {
         const data = await res.json();
         setModels(data.models || []);
@@ -584,11 +595,11 @@ export default function SettingsModal() {
     }
   };
 
-  // Save settings to API
+  // Save settings to localStorage and API (best-effort)
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Filter out undefined/null values to prevent DB errors
+      // Filter out undefined/null values
       const cleanSettings: Record<string, string> = {};
       for (const [key, value] of Object.entries(localSettings)) {
         if (value !== undefined && value !== null) {
@@ -596,25 +607,20 @@ export default function SettingsModal() {
         }
       }
 
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: cleanSettings }),
-      });
-      if (res.ok) {
-        setSettings(cleanSettings);
-        toast.success('Settings saved', { description: 'Your preferences have been updated.' });
-        setIsSettingsOpen(false);
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error('Failed to save settings', {
-          description: errorData.error || `Server error (${res.status})`,
-        });
-      }
+      // Save to localStorage first (always works), then try API as best-effort
+      const result = await saveSettings(cleanSettings);
+      markOnboarded(); // Ensure onboarding state is saved
+
+      setSettings(cleanSettings);
+      toast.success('Settings saved', { description: 'Your preferences have been updated.' });
+      setIsSettingsOpen(false);
     } catch (err) {
-      toast.error('Failed to save settings', {
-        description: err instanceof Error ? err.message : 'Network error — check your connection',
-      });
+      // Even on error, save to localStorage and close
+      saveSettingsToLocal(localSettings);
+      markOnboarded();
+      setSettings(localSettings);
+      toast.success('Settings saved', { description: 'Saved locally (server sync unavailable).' });
+      setIsSettingsOpen(false);
     } finally {
       setIsSaving(false);
     }

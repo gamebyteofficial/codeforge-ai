@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import type { ProviderKey } from '@/lib/llm';
 
 // ─── Static Model Definitions ──────────────────────────────────────────────────
@@ -239,14 +239,25 @@ function buildStaticModels(provider: string): ModelEntry[] {
 
 // ─── GET Handler ───────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     // Step 1: Read the user's provider from database settings
-    const settings = await db.setting.findMany();
-    const settingsMap: Record<string, string> = {};
-    settings.forEach((s) => {
-      settingsMap[s.key] = s.value;
-    });
+    let settingsMap: Record<string, string> = {};
+    try {
+      const settings = await db.setting.findMany();
+      settings.forEach((s) => {
+        settingsMap[s.key] = s.value;
+      });
+    } catch {
+      // Database unavailable (e.g., Vercel serverless with SQLite)
+    }
+
+    // Also check for client-provided provider in query params
+    const url = new URL(req.url);
+    const clientProvider = url.searchParams.get('provider');
+    if (clientProvider && !settingsMap.provider) {
+      settingsMap.provider = clientProvider;
+    }
 
     const provider = (settingsMap.provider || 'openrouter') as ProviderKey;
 

@@ -207,9 +207,31 @@ export async function POST(req: NextRequest) {
     console.log(`[Chat API] Request: model=${selectedModel}, agent=${agent || 'default'}, messageLength=${message.length}, hasProjectContext=${!!projectContext}`);
 
     // Pre-check API key availability for faster error response
-    const settingsRows = await db.setting.findMany();
-    const settingsMap: Record<string, string> = {};
-    settingsRows.forEach((s) => { settingsMap[s.key] = s.value; });
+    // Try database first, fall back to client-provided settings
+    let settingsMap: Record<string, string> = {};
+    try {
+      const settingsRows = await db.setting.findMany();
+      settingsRows.forEach((s) => { settingsMap[s.key] = s.value; });
+    } catch (dbError) {
+      console.warn('[Chat API] Database unavailable, using client-provided settings');
+    }
+
+    // Merge with client-provided settings (client settings take priority if DB is empty)
+    const clientSettings = (body as { settings?: Record<string, string> }).settings;
+    if (clientSettings && Object.keys(clientSettings).length > 0) {
+      // Client settings fill in gaps or override when DB is unavailable
+      if (Object.keys(settingsMap).length === 0) {
+        settingsMap = { ...clientSettings };
+      } else {
+        // DB settings take priority, but client settings fill in missing keys
+        for (const [key, value] of Object.entries(clientSettings)) {
+          if (!settingsMap[key] && value) {
+            settingsMap[key] = value;
+          }
+        }
+      }
+    }
+
     const configuredProvider = (settingsMap.provider || 'openrouter') as ProviderKey;
     const hasPrimaryKey = !!getApiKeyForProvider(settingsMap, configuredProvider);
     const secondaryProvider = settingsMap.provider2 as ProviderKey | undefined;
@@ -275,6 +297,7 @@ export async function POST(req: NextRequest) {
               messages,
               temperature: temperature ?? 0.7,
               maxTokens: maxTokens ?? 4096,
+              clientSettings: settingsMap,
             })) {
               if (closed) break; // Stop processing if stream was closed
 
@@ -333,6 +356,7 @@ export async function POST(req: NextRequest) {
       messages,
       temperature: temperature ?? 0.7,
       maxTokens: maxTokens ?? 4096,
+      clientSettings: settingsMap,
     });
 
     if (result.error) {
