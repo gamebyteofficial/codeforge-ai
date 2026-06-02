@@ -58,7 +58,9 @@ type ProviderKey =
   | 'deepseek'
   | 'mistral'
   | 'openrouter'
-  | 'opencode';
+  | 'opencode'
+  | 'groq'
+  | 'together';
 
 interface DynamicModel {
   id: string;
@@ -114,6 +116,16 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
     icon: '🧘',
     keyHint: 'oc-... (from opencode.ai/zen)',
   },
+  groq: {
+    name: 'Groq',
+    icon: '⚡',
+    keyHint: 'gsk_... (from console.groq.com)',
+  },
+  together: {
+    name: 'Together AI',
+    icon: '🤝',
+    keyHint: '... (from api.together.xyz)',
+  },
 };
 
 // ─── Default Settings ────────────────────────────────────────────────────────
@@ -121,6 +133,8 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
 const DEFAULT_SETTINGS: Record<string, string> = {
   provider: 'openrouter',
   provider2: 'opencode',
+  provider3: 'deepseek',
+  provider4: 'gemini',
   apiKey: '',
   model: 'openrouter/auto',
   language: 'typescript',
@@ -148,7 +162,7 @@ function ApiKeyInputSection({
   connectionStatus,
   onTestConnection,
   isTesting,
-  excludeProvider,
+  excludeProviders,
 }: {
   label: string;
   labelIcon: React.ReactNode;
@@ -161,7 +175,7 @@ function ApiKeyInputSection({
   connectionStatus: 'idle' | 'success' | 'error';
   onTestConnection: () => void;
   isTesting: boolean;
-  excludeProvider?: string;
+  excludeProviders?: string[];
 }) {
   const providerInfo = PROVIDERS[provider];
 
@@ -187,7 +201,7 @@ function ApiKeyInputSection({
           </SelectTrigger>
           <SelectContent className="bg-zinc-800 border-zinc-700">
             {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
-              .filter(([key]) => key !== excludeProvider)
+              .filter(([key]) => !excludeProviders?.includes(key))
               .map(([key, info]) => (
                 <SelectItem
                   key={key}
@@ -276,12 +290,18 @@ export default function SettingsModal() {
   const [localSettings, setLocalSettings] = useState<Record<string, string>>({ ...settings });
   const [showApiKey1, setShowApiKey1] = useState(false);
   const [showApiKey2, setShowApiKey2] = useState(false);
+  const [showApiKey3, setShowApiKey3] = useState(false);
+  const [showApiKey4, setShowApiKey4] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting1, setIsTesting1] = useState(false);
   const [isTesting2, setIsTesting2] = useState(false);
+  const [isTesting3, setIsTesting3] = useState(false);
+  const [isTesting4, setIsTesting4] = useState(false);
   const [connectionStatus1, setConnectionStatus1] = useState<'idle' | 'success' | 'error'>('idle');
   const [connectionStatus2, setConnectionStatus2] = useState<'idle' | 'success' | 'error'>('idle');
+  const [connectionStatus3, setConnectionStatus3] = useState<'idle' | 'success' | 'error'>('idle');
+  const [connectionStatus4, setConnectionStatus4] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Dynamic models state
   const [models, setModels] = useState<DynamicModel[]>([]);
@@ -355,10 +375,14 @@ export default function SettingsModal() {
   // Current providers
   const currentProvider1 = (localSettings.provider || 'openrouter') as ProviderKey;
   const currentProvider2 = (localSettings.provider2 || 'opencode') as ProviderKey;
+  const currentProvider3 = (localSettings.provider3 || 'deepseek') as ProviderKey;
+  const currentProvider4 = (localSettings.provider4 || 'gemini') as ProviderKey;
 
   // API keys (per-provider or legacy)
   const apiKey1 = localSettings[`${currentProvider1}_apiKey`] || (localSettings.provider === currentProvider1 ? localSettings.apiKey : '');
   const apiKey2 = localSettings[`${currentProvider2}_apiKey`] || '';
+  const apiKey3 = localSettings[`${currentProvider3}_apiKey`] || '';
+  const apiKey4 = localSettings[`${currentProvider4}_apiKey`] || '';
 
   // When primary provider changes
   const handleProvider1Change = (provider: string) => {
@@ -378,6 +402,18 @@ export default function SettingsModal() {
     setConnectionStatus2('idle');
   };
 
+  // When provider 3 changes
+  const handleProvider3Change = (provider: string) => {
+    updateSetting('provider3', provider);
+    setConnectionStatus3('idle');
+  };
+
+  // When provider 4 changes
+  const handleProvider4Change = (provider: string) => {
+    updateSetting('provider4', provider);
+    setConnectionStatus4('idle');
+  };
+
   // When primary API key changes
   const handleApiKey1Change = (key: string) => {
     const perProviderKey = `${currentProvider1}_apiKey`;
@@ -392,6 +428,18 @@ export default function SettingsModal() {
   // When secondary API key changes
   const handleApiKey2Change = (key: string) => {
     const perProviderKey = `${currentProvider2}_apiKey`;
+    setLocalSettings((prev) => ({ ...prev, [perProviderKey]: key }));
+  };
+
+  // When provider 3 API key changes
+  const handleApiKey3Change = (key: string) => {
+    const perProviderKey = `${currentProvider3}_apiKey`;
+    setLocalSettings((prev) => ({ ...prev, [perProviderKey]: key }));
+  };
+
+  // When provider 4 API key changes
+  const handleApiKey4Change = (key: string) => {
+    const perProviderKey = `${currentProvider4}_apiKey`;
     setLocalSettings((prev) => ({ ...prev, [perProviderKey]: key }));
   };
 
@@ -411,6 +459,8 @@ export default function SettingsModal() {
     setLocalSettings(newSettings);
     setConnectionStatus1('idle');
     setConnectionStatus2('idle');
+    setConnectionStatus3('idle');
+    setConnectionStatus4('idle');
     toast.info('Providers swapped', { description: `${PROVIDERS[currentProvider2].name} is now your primary provider` });
   };
 
@@ -474,24 +524,97 @@ export default function SettingsModal() {
     }
   };
 
+  // Test provider 3 connection
+  const handleTestConnection3 = async () => {
+    setIsTesting3(true);
+    setConnectionStatus3('idle');
+    try {
+      const key = localSettings[`${currentProvider3}_apiKey`];
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { provider: currentProvider3, [`${currentProvider3}_apiKey`]: key, apiKey: key },
+          testConnection: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setConnectionStatus3('success');
+        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider3].name}` });
+      } else {
+        setConnectionStatus3('error');
+        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
+      }
+    } catch {
+      setConnectionStatus3('error');
+      toast.error('Connection failed', { description: 'Network error.' });
+    } finally {
+      setIsTesting3(false);
+    }
+  };
+
+  // Test provider 4 connection
+  const handleTestConnection4 = async () => {
+    setIsTesting4(true);
+    setConnectionStatus4('idle');
+    try {
+      const key = localSettings[`${currentProvider4}_apiKey`];
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { provider: currentProvider4, [`${currentProvider4}_apiKey`]: key, apiKey: key },
+          testConnection: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setConnectionStatus4('success');
+        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider4].name}` });
+      } else {
+        setConnectionStatus4('error');
+        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
+      }
+    } catch {
+      setConnectionStatus4('error');
+      toast.error('Connection failed', { description: 'Network error.' });
+    } finally {
+      setIsTesting4(false);
+    }
+  };
+
   // Save settings to API
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      // Filter out undefined/null values to prevent DB errors
+      const cleanSettings: Record<string, string> = {};
+      for (const [key, value] of Object.entries(localSettings)) {
+        if (value !== undefined && value !== null) {
+          cleanSettings[key] = String(value);
+        }
+      }
+
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: localSettings }),
+        body: JSON.stringify({ settings: cleanSettings }),
       });
       if (res.ok) {
-        setSettings(localSettings);
+        setSettings(cleanSettings);
         toast.success('Settings saved', { description: 'Your preferences have been updated.' });
         setIsSettingsOpen(false);
       } else {
-        toast.error('Failed to save settings');
+        const errorData = await res.json().catch(() => ({}));
+        toast.error('Failed to save settings', {
+          description: errorData.error || `Server error (${res.status})`,
+        });
       }
-    } catch {
-      toast.error('Failed to save settings');
+    } catch (err) {
+      toast.error('Failed to save settings', {
+        description: err instanceof Error ? err.message : 'Network error — check your connection',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -502,8 +625,12 @@ export default function SettingsModal() {
     setLocalSettings({ ...DEFAULT_SETTINGS });
     setShowApiKey1(false);
     setShowApiKey2(false);
+    setShowApiKey3(false);
+    setShowApiKey4(false);
     setConnectionStatus1('idle');
     setConnectionStatus2('idle');
+    setConnectionStatus3('idle');
+    setConnectionStatus4('idle');
     toast.info('Settings reset');
   };
 
@@ -512,8 +639,12 @@ export default function SettingsModal() {
     setLocalSettings({ ...settings });
     setShowApiKey1(false);
     setShowApiKey2(false);
+    setShowApiKey3(false);
+    setShowApiKey4(false);
     setConnectionStatus1('idle');
     setConnectionStatus2('idle');
+    setConnectionStatus3('idle');
+    setConnectionStatus4('idle');
     setIsSettingsOpen(false);
   };
 
@@ -620,7 +751,7 @@ export default function SettingsModal() {
                       connectionStatus={connectionStatus1}
                       onTestConnection={handleTestConnection1}
                       isTesting={isTesting1}
-                      excludeProvider={currentProvider2}
+                      excludeProviders={[currentProvider2, currentProvider3, currentProvider4]}
                     />
 
                     {/* Secondary Provider */}
@@ -636,7 +767,39 @@ export default function SettingsModal() {
                       connectionStatus={connectionStatus2}
                       onTestConnection={handleTestConnection2}
                       isTesting={isTesting2}
-                      excludeProvider={currentProvider1}
+                      excludeProviders={[currentProvider1, currentProvider3, currentProvider4]}
+                    />
+
+                    {/* Provider 3 */}
+                    <ApiKeyInputSection
+                      label="Provider 3 (Tertiary)"
+                      labelIcon={<Zap className="size-3.5 text-zinc-500" />}
+                      provider={currentProvider3}
+                      apiKey={apiKey3}
+                      onProviderChange={handleProvider3Change}
+                      onApiKeyChange={handleApiKey3Change}
+                      showApiKey={showApiKey3}
+                      onToggleShowKey={() => setShowApiKey3(!showApiKey3)}
+                      connectionStatus={connectionStatus3}
+                      onTestConnection={handleTestConnection3}
+                      isTesting={isTesting3}
+                      excludeProviders={[currentProvider1, currentProvider2, currentProvider4]}
+                    />
+
+                    {/* Provider 4 */}
+                    <ApiKeyInputSection
+                      label="Provider 4 (Quaternary)"
+                      labelIcon={<Zap className="size-3.5 text-zinc-500" />}
+                      provider={currentProvider4}
+                      apiKey={apiKey4}
+                      onProviderChange={handleProvider4Change}
+                      onApiKeyChange={handleApiKey4Change}
+                      showApiKey={showApiKey4}
+                      onToggleShowKey={() => setShowApiKey4(!showApiKey4)}
+                      connectionStatus={connectionStatus4}
+                      onTestConnection={handleTestConnection4}
+                      isTesting={isTesting4}
+                      excludeProviders={[currentProvider1, currentProvider2, currentProvider3]}
                     />
                   </div>
 
@@ -730,13 +893,15 @@ export default function SettingsModal() {
                     <span className="text-[11px] text-zinc-500">
                       Primary: <span className="text-zinc-300">{PROVIDERS[currentProvider1]?.name}</span>
                       {apiKey1 && <span className="text-emerald-400 ml-1">✓</span>}
-                      {currentProvider2 && (
-                        <>
-                          <span className="mx-2 text-zinc-700">|</span>
-                          Secondary: <span className="text-zinc-300">{PROVIDERS[currentProvider2]?.name}</span>
-                          {apiKey2 && <span className="text-emerald-400 ml-1">✓</span>}
-                        </>
-                      )}
+                      <span className="mx-2 text-zinc-700">|</span>
+                      Secondary: <span className="text-zinc-300">{PROVIDERS[currentProvider2]?.name}</span>
+                      {apiKey2 && <span className="text-emerald-400 ml-1">✓</span>}
+                      <span className="mx-2 text-zinc-700">|</span>
+                      Provider 3: <span className="text-zinc-300">{PROVIDERS[currentProvider3]?.name}</span>
+                      {apiKey3 && <span className="text-emerald-400 ml-1">✓</span>}
+                      <span className="mx-2 text-zinc-700">|</span>
+                      Provider 4: <span className="text-zinc-300">{PROVIDERS[currentProvider4]?.name}</span>
+                      {apiKey4 && <span className="text-emerald-400 ml-1">✓</span>}
                     </span>
                   </div>
                 </>

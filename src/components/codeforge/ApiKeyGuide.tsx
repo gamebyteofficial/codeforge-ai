@@ -24,7 +24,9 @@ type ProviderKey =
   | 'deepseek'
   | 'mistral'
   | 'openrouter'
-  | 'opencode';
+  | 'opencode'
+  | 'groq'
+  | 'together';
 
 interface ProviderGuide {
   name: string;
@@ -164,6 +166,38 @@ const PROVIDER_GUIDES: Record<ProviderKey, ProviderGuide> = {
     freeCredits: 'Big Pickle, DeepSeek V4 Flash Free, MiMo V2.5 Free, Qwen3.6 Plus Free, MiniMax M3 Free & Nemotron 3 Super Free!',
     bestModels: ['Big Pickle (FREE — great for coding)', 'DeepSeek V4 Flash Free (FREE)', 'Claude Sonnet 4 (Paid)', 'GPT-5 (Paid)', 'Gemini 3.5 Flash (Paid)'],
     tip: 'Big Pickle is a powerful free model — perfect for coding! Free model availability may change over time.',
+  },
+  groq: {
+    name: 'Groq',
+    icon: '⚡',
+    getUrl: 'https://console.groq.com/keys',
+    getUrlLabel: 'console.groq.com/keys',
+    steps: [
+      'Go to console.groq.com and create an account',
+      'Navigate to API Keys in your dashboard',
+      'Click "Create API Key"',
+      'Copy the key (starts with gsk_...) and paste it here',
+    ],
+    pricing: 'Free tier with rate limits. Pay-as-you-go for higher limits',
+    freeCredits: 'Generous free tier — great for development and testing!',
+    bestModels: ['Llama 3.3 70B Versatile (Most capable)', 'Llama 3.1 8B Instant (Fastest)', 'Mixtral 8x7B (Balanced)', 'Gemma 2 9B (Lightweight)'],
+    tip: 'Groq is incredibly fast — great for real-time applications and rapid iteration!',
+  },
+  together: {
+    name: 'Together AI',
+    icon: '🤝',
+    getUrl: 'https://api.together.xyz/settings/api-keys',
+    getUrlLabel: 'api.together.xyz/settings/api-keys',
+    steps: [
+      'Go to api.together.xyz and create an account',
+      'Navigate to API Keys in Settings',
+      'Click "Create API Key"',
+      'Copy the key and paste it here',
+    ],
+    pricing: 'Pay-as-you-go: Llama 3 70B from $0.80/1M input tokens',
+    freeCredits: '$5 free credits for new accounts',
+    bestModels: ['Llama 3 70B Chat (Most capable)', 'Mixtral 8x7B Instruct (Fast)', 'RedPajama 7B Chat (Lightweight)'],
+    tip: 'Together AI offers great pricing on open-source models with fast inference!',
   },
 };
 

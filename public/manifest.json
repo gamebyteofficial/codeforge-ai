@@ -1,0 +1,26 @@
+{
+  "name": "CodeForge AI",
+  "short_name": "CodeForge",
+  "description": "Autonomous AI Coding Agent - Build apps from natural language",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#10b981",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["developer tools", "productivity"],
+  "shortcuts": [
+    {
+      "name": "New Chat",
+      "url": "/?action=new-chat",
+      "description": "Start a new chat with CodeForge AI"
+    }
+  ]
+}

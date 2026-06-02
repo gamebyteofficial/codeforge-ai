@@ -602,33 +602,51 @@ export default function CodeEditor() {
   const handleOpenPreview = useCallback(() => {
     if (!currentFile) return;
 
-    // Find HTML, CSS, and JS files from the current project
-    const htmlFile = files.find(f => {
+    // Find all HTML, CSS, and JS files from the current project
+    const htmlFiles = files.filter(f => {
       const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
       return ['html', 'htm'].includes(ext) && !f.isFolder;
     });
-    const cssFile = files.find(f => {
+    const cssFiles = files.filter(f => {
       const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
       return ['css', 'scss', 'less'].includes(ext) && !f.isFolder;
     });
-    const jsFile = files.find(f => {
+    const jsFiles = files.filter(f => {
       const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-      return ['js', 'jsx', 'ts', 'tsx'].includes(ext) && !f.isFolder;
+      return ['js', 'jsx'].includes(ext) && !f.isFolder;
     });
 
     // Use current file content if it matches a type, otherwise use found files
     const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
-    let html = htmlFile?.content ?? '';
-    let css = cssFile?.content ?? '';
-    let js = jsFile?.content ?? '';
+
+    // Combine multiple CSS files into one, and multiple JS files into one
+    let html = htmlFiles[0]?.content ?? '';
+    let css = cssFiles.map(f => `/* ${f.name} */\n${f.content}`).join('\n\n');
+    let js = jsFiles.map(f => `// ${f.name}\n${f.content}`).join('\n\n');
 
     // If the current file is one of these types, use its latest content
     if (['html', 'htm'].includes(ext)) {
       html = isDirty ? editContent : currentFile.content;
     } else if (['css', 'scss', 'less'].includes(ext)) {
+      // Replace the matching file's content in the combined CSS
       css = isDirty ? editContent : currentFile.content;
-    } else if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
+      if (cssFiles.length > 1) {
+        css = cssFiles
+          .filter(f => f.id !== currentFile.id)
+          .map(f => `/* ${f.name} */\n${f.content}`)
+          .concat([`/* ${currentFile.name} */\n${css}`])
+          .join('\n\n');
+      }
+    } else if (['js', 'jsx'].includes(ext)) {
+      // Replace the matching file's content in the combined JS
       js = isDirty ? editContent : currentFile.content;
+      if (jsFiles.length > 1) {
+        js = jsFiles
+          .filter(f => f.id !== currentFile.id)
+          .map(f => `// ${f.name}\n${f.content}`)
+          .concat([`// ${currentFile.name}\n${js}`])
+          .join('\n\n');
+      }
     }
 
     setPreviewFiles({ html, css, js });

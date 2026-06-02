@@ -59,11 +59,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Save settings
-    const operations = Object.entries(settings).map(([key, value]) =>
+    // Filter out any non-string values to prevent DB errors
+    const cleanEntries = Object.entries(settings).filter(
+      ([, value]) => value !== undefined && value !== null
+    );
+    
+    const operations = cleanEntries.map(([key, value]) =>
       db.setting.upsert({
         where: { key },
-        update: { value },
-        create: { key, value },
+        update: { value: String(value) },
+        create: { key, value: String(value) },
       })
     );
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { streamLLM, type StreamChunk } from '@/lib/llm';
+import { streamLLM, getApiKeyForProvider, type ProviderKey, type StreamChunk } from '@/lib/llm';
 import { db } from '@/lib/db';
 
 // System prompts for different agent types
@@ -206,12 +206,69 @@ export async function POST(req: NextRequest) {
 
     console.log(`[Chat API] Request: model=${selectedModel}, agent=${agent || 'default'}, messageLength=${message.length}, hasProjectContext=${!!projectContext}`);
 
+    // Pre-check API key availability for faster error response
+    const settingsRows = await db.setting.findMany();
+    const settingsMap: Record<string, string> = {};
+    settingsRows.forEach((s) => { settingsMap[s.key] = s.value; });
+    const configuredProvider = (settingsMap.provider || 'openrouter') as ProviderKey;
+    const hasPrimaryKey = !!getApiKeyForProvider(settingsMap, configuredProvider);
+    const secondaryProvider = settingsMap.provider2 as ProviderKey | undefined;
+    const hasSecondaryKey = secondaryProvider ? !!getApiKeyForProvider(settingsMap, secondaryProvider) : false;
+
+    if (!hasPrimaryKey && !hasSecondaryKey) {
+      console.warn(`[Chat API] No API key found for provider=${configuredProvider} or secondary=${secondaryProvider || 'none'}`);
+      if (shouldStream) {
+        const encoder = new TextEncoder();
+        const errorStream = new ReadableStream({
+          start(controller) {
+            const errorMsg = JSON.stringify({ error: `No API key configured for ${configuredProvider}. Please add your API key in ⚙️ Settings.` });
+            controller.enqueue(encoder.encode(`data: ${errorMsg}\n\n`));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          },
+        });
+        return new Response(errorStream, {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+        });
+      } else {
+        return NextResponse.json(
+          { error: `No API key configured for ${configuredProvider}. Please add your API key in ⚙️ Settings.` },
+          { status: 401 },
+        );
+      }
+    }
+
+    console.log(`[Chat API] API key resolved: primary=${hasPrimaryKey} (${configuredProvider}), secondary=${hasSecondaryKey} (${secondaryProvider || 'none'})`);
+
     if (shouldStream) {
       // ─── Streaming Response ───────────────────────────────────────────
       const encoder = new TextEncoder();
 
       const stream = new ReadableStream({
         async start(controller) {
+          let closed = false;
+
+          const safeEnqueue = (data: Uint8Array) => {
+            if (!closed) {
+              try {
+                controller.enqueue(data);
+              } catch {
+                // Controller already closed — ignore
+              }
+            }
+          };
+
+          const safeClose = () => {
+            if (!closed) {
+              closed = true;
+              try {
+                controller.close();
+              } catch {
+                // Controller already closed — ignore
+              }
+            }
+          };
+
           try {
             for await (const chunk of streamLLM({
               model: selectedModel,
@@ -219,11 +276,14 @@ export async function POST(req: NextRequest) {
               temperature: temperature ?? 0.7,
               maxTokens: maxTokens ?? 4096,
             })) {
+              if (closed) break; // Stop processing if stream was closed
+
               if (chunk.error) {
+                console.error(`[Chat API] LLM stream error: ${chunk.error}`);
                 const errorMsg = JSON.stringify({ error: chunk.error });
-                controller.enqueue(encoder.encode(`data: ${errorMsg}\n\n`));
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                controller.close();
+                safeEnqueue(encoder.encode(`data: ${errorMsg}\n\n`));
+                safeEnqueue(encoder.encode('data: [DONE]\n\n'));
+                safeClose();
                 return;
               }
 
@@ -232,25 +292,28 @@ export async function POST(req: NextRequest) {
                   content: chunk.content,
                   model: chunk.model || selectedModel,
                 });
-                controller.enqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                safeEnqueue(encoder.encode(`data: ${sseMessage}\n\n`));
               }
 
               if (chunk.done) {
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                controller.close();
+                safeEnqueue(encoder.encode('data: [DONE]\n\n'));
+                safeClose();
                 return;
               }
             }
 
             // Fallback close if no done signal
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
+            safeEnqueue(encoder.encode('data: [DONE]\n\n'));
+            safeClose();
           } catch (error) {
-            console.error('Stream error:', error);
-            const errorMsg = JSON.stringify({ error: 'Stream interrupted unexpectedly' });
-            controller.enqueue(encoder.encode(`data: ${errorMsg}\n\n`));
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
+            console.error('[Chat API] Stream error:', error);
+            if (!closed) {
+              const errMsg = error instanceof Error ? error.message : 'Stream interrupted unexpectedly';
+              const errorMsg = JSON.stringify({ error: errMsg });
+              safeEnqueue(encoder.encode(`data: ${errorMsg}\n\n`));
+              safeEnqueue(encoder.encode('data: [DONE]\n\n'));
+              safeClose();
+            }
           }
         },
       });
@@ -284,9 +347,33 @@ export async function POST(req: NextRequest) {
       projectId: projectId || null,
     });
   } catch (error) {
-    console.error('Chat API error:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[Chat API] Unhandled error: ${errorMsg}`);
+
+    // Provide specific, actionable error messages
+    const isNoApiKey = errorMsg.toLowerCase().includes('no api key') || errorMsg.toLowerCase().includes('api key');
+    const isNetworkError = errorMsg.toLowerCase().includes('network') ||
+      errorMsg.toLowerCase().includes('econnrefused') ||
+      errorMsg.toLowerCase().includes('enotfound') ||
+      errorMsg.toLowerCase().includes('fetch failed');
+    const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('aborted');
+    const isRateLimit = errorMsg.toLowerCase().includes('rate limit') || errorMsg.includes('429');
+
+    let userMessage: string;
+    if (isNoApiKey) {
+      userMessage = 'No API key configured. Please add your API key in ⚙️ Settings.';
+    } else if (isNetworkError) {
+      userMessage = 'Network error: Could not reach the AI provider. Check your internet connection and API key in ⚙️ Settings, or try a different provider.';
+    } else if (isTimeout) {
+      userMessage = 'Request timed out. The provider might be slow or unavailable. Try a different model or provider.';
+    } else if (isRateLimit) {
+      userMessage = 'Rate limit reached. Please wait a moment and try again, or switch to a different provider in ⚙️ Settings.';
+    } else {
+      userMessage = `Failed to process message: ${errorMsg}. Check your API key in ⚙️ Settings and try again.`;
+    }
+
     return NextResponse.json(
-      { error: 'Failed to process message. Please check your API key and try again.' },
+      { error: userMessage },
       { status: 500 },
     );
   }

@@ -46,7 +46,9 @@ type ProviderKey =
   | 'deepseek'
   | 'mistral'
   | 'openrouter'
-  | 'opencode';
+  | 'opencode'
+  | 'groq'
+  | 'together';
 
 interface DynamicModel {
   id: string;
@@ -101,6 +103,16 @@ const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
     name: 'OpenCode Zen',
     icon: '🧘',
     keyHint: 'oc-... (from opencode.ai/zen)',
+  },
+  groq: {
+    name: 'Groq',
+    icon: '⚡',
+    keyHint: 'gsk_... (from console.groq.com)',
+  },
+  together: {
+    name: 'Together AI',
+    icon: '🤝',
+    keyHint: '... (from api.together.xyz)',
   },
 };
 
@@ -174,6 +186,54 @@ export default function OnboardingWizard() {
     setProvider2(newProvider as ProviderKey);
     setConnectionStatus2('idle');
   };
+
+  // Skip onboarding — save minimal settings and proceed
+  const handleSkipOnboarding = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      const minimalSettings: Record<string, string> = {
+        provider: provider1,
+        provider2,
+        model: 'openrouter/auto',
+        apiKey: 'skipped',
+        temperature: '0.7',
+        maxTokens: '4096',
+      };
+
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: minimalSettings }),
+      });
+
+      if (res.ok) {
+        setSettings(minimalSettings);
+        setSelectedModel('openrouter/auto');
+        setIsOnboarded(true);
+        toast.info('Skipped setup', {
+          description: 'You can add API keys later in ⚙️ Settings',
+        });
+      } else {
+        // Even if save fails, let the user in
+        setSettings(minimalSettings);
+        setSelectedModel('openrouter/auto');
+        setIsOnboarded(true);
+        toast.info('Skipped setup', {
+          description: 'You can add API keys later in ⚙️ Settings',
+        });
+      }
+    } catch {
+      // Even on network error, let the user in
+      setSettings({ provider: provider1, provider2, model: 'openrouter/auto', apiKey: 'skipped' });
+      setSelectedModel('openrouter/auto');
+      setIsOnboarded(true);
+      toast.info('Skipped setup', {
+        description: 'You can add API keys later in ⚙️ Settings',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [provider1, provider2, setSettings, setIsOnboarded, setSelectedModel]);
 
   // Fetch models when moving to step 2
   const fetchModels = useCallback(async () => {
@@ -273,7 +333,7 @@ export default function OnboardingWizard() {
   const handleComplete = useCallback(async () => {
     setIsSaving(true);
     try {
-      const settings = {
+      const settings: Record<string, string> = {
         provider: provider1,
         provider2,
         [`${provider1}_apiKey`]: apiKey1,
@@ -284,24 +344,41 @@ export default function OnboardingWizard() {
         maxTokens: String(maxTokens),
       };
 
+      // Filter out empty/null/undefined values to prevent DB errors
+      const cleanSettings: Record<string, string> = {};
+      for (const [key, value] of Object.entries(settings)) {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanSettings[key] = String(value);
+        }
+      }
+      // Always ensure these keys exist even if empty
+      cleanSettings.provider = provider1;
+      cleanSettings.model = model;
+      cleanSettings.apiKey = apiKey1;
+
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: cleanSettings }),
       });
 
       if (res.ok) {
-        setSettings(settings);
+        setSettings(cleanSettings);
         setSelectedModel(model);
         setIsOnboarded(true);
         toast.success('Setup complete!', {
           description: `You're all set with ${PROVIDERS[provider1].name} — ${model}`,
         });
       } else {
-        toast.error('Failed to save settings');
+        const errorData = await res.json().catch(() => ({}));
+        toast.error('Failed to save settings', {
+          description: errorData.error || `Server error (${res.status})`,
+        });
       }
-    } catch {
-      toast.error('Failed to save settings');
+    } catch (err) {
+      toast.error('Failed to save settings', {
+        description: err instanceof Error ? err.message : 'Network error — check your connection',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -310,7 +387,7 @@ export default function OnboardingWizard() {
   const canGoNext = step === 0
     ? true
     : step === 1
-      ? apiKey1.length > 0 && connectionStatus1 === 'success'
+      ? apiKey1.length > 0 // Only require API key, connection test is optional
       : true;
 
   return (
@@ -450,15 +527,27 @@ export default function OnboardingWizard() {
             )}
 
             {step < 2 ? (
-              <Button
-                size="sm"
-                onClick={() => goToStep(step + 1)}
-                disabled={!canGoNext}
-                className="bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {step === 0 ? 'Get Started' : 'Next'}
-                <ArrowRight className="ml-1 size-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                {step === 1 && !apiKey1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSkipOnboarding}
+                    className="text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 text-xs"
+                  >
+                    Skip for now
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => goToStep(step + 1)}
+                  disabled={!canGoNext}
+                  className="bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {step === 0 ? 'Get Started' : 'Next'}
+                  <ArrowRight className="ml-1 size-4" />
+                </Button>
+              </div>
             ) : (
               <Button
                 size="sm"
@@ -485,7 +574,7 @@ export default function OnboardingWizard() {
         {/* Bottom brand */}
         <div className="mt-6 text-center">
           <p className="text-xs text-zinc-600">
-            Powered by <span className="text-zinc-400">Z.ai</span>
+            CodeForge AI
           </p>
         </div>
       </motion.div>

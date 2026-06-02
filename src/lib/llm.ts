@@ -22,7 +22,9 @@ export type ProviderKey =
   | 'deepseek'
   | 'mistral'
   | 'openrouter'
-  | 'opencode';
+  | 'opencode'
+  | 'groq'
+  | 'together';
 
 interface ProviderConfig {
   name: string;
@@ -133,6 +135,22 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
       'X-Title': 'CodeForge AI',
     },
   },
+  groq: {
+    name: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    testModel: 'llama-3.1-8b-instant',
+    chatPath: '/chat/completions',
+    openaiCompatible: true,
+  },
+  together: {
+    name: 'Together AI',
+    baseUrl: 'https://api.together.xyz/v1',
+    models: ['meta-llama/Llama-3-70b-chat-hf', 'mistralai/Mixtral-8x7B-Instruct-v0.1', 'togethercomputer/RedPajama-INCITE-7B-Chat'],
+    testModel: 'meta-llama/Llama-3-70b-chat-hf',
+    chatPath: '/chat/completions',
+    openaiCompatible: true,
+  },
 };
 
 // ─── Settings Helper ─────────────────────────────────────────────────────────
@@ -181,11 +199,38 @@ async function* streamOpenAICompatible(
 
   console.log(`[LLM] Calling ${config.name} API: ${url} with model: ${model}`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body,
-  });
+  // Add abort controller with timeout for API calls
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: controller.signal,
+    });
+  } catch (fetchError) {
+    clearTimeout(timeoutId);
+    const errMsg = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+    console.error(`[LLM] Fetch error calling ${config.name}: ${errMsg}`);
+
+    if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+      yield { content: '', error: `Request to ${config.name} timed out after 120 seconds. The provider might be slow or unavailable. Try a different model or provider.`, done: true };
+    } else {
+      // Check for common network-level errors
+      const isNetworkError = errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') ||
+        errMsg.includes('fetch failed') || errMsg.includes('network') || errMsg.includes('NetworkError');
+      if (isNetworkError) {
+        yield { content: '', error: `Could not reach ${config.name} (network error). This usually means: 1) The provider is down, 2) Your API key is invalid, or 3) A firewall is blocking the request. Try a different provider in Settings.`, done: true };
+      } else {
+        yield { content: '', error: `Could not reach ${config.name}: ${errMsg}. Check your API key and internet connection.`, done: true };
+      }
+    }
+    return;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -307,11 +352,33 @@ async function* streamAnthropic(
 
   console.log(`[LLM] Calling Anthropic API with model: ${model}`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body,
-  });
+  // Add abort controller with timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: controller.signal,
+    });
+  } catch (fetchError) {
+    clearTimeout(timeoutId);
+    const errMsg = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+    if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+      yield { content: '', error: 'Request to Anthropic timed out after 120 seconds. Try a different model or provider.', done: true };
+    } else {
+      const isNetworkError = errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') ||
+        errMsg.includes('fetch failed') || errMsg.includes('network');
+      yield { content: '', error: isNetworkError
+        ? `Could not reach Anthropic (network error). Check your internet connection and API key, or try a different provider.`
+        : `Could not reach Anthropic: ${errMsg}. Check your API key.`, done: true };
+    }
+    return;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -406,11 +473,33 @@ async function* streamGemini(
 
   console.log(`[LLM] Calling Gemini API with model: ${model}`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-  });
+  // Add abort controller with timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      signal: controller.signal,
+    });
+  } catch (fetchError) {
+    clearTimeout(timeoutId);
+    const errMsg = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+    if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+      yield { content: '', error: 'Request to Gemini timed out after 120 seconds. Try a different model or provider.', done: true };
+    } else {
+      const isNetworkError = errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') ||
+        errMsg.includes('fetch failed') || errMsg.includes('network');
+      yield { content: '', error: isNetworkError
+        ? `Could not reach Gemini (network error). Check your internet connection and API key, or try a different provider.`
+        : `Could not reach Gemini: ${errMsg}. Check your API key.`, done: true };
+    }
+    return;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -483,9 +572,11 @@ export function getApiKeyForProvider(settings: Record<string, string>, provider:
   // 1. Per-provider key
   const perProviderKey = settings[`${provider}_apiKey`];
   if (perProviderKey) return perProviderKey;
-  // 2. Legacy single key (only if the requested provider matches the active provider)
+  // 2. Legacy single key — try if the requested provider matches the active provider
   if (settings.provider === provider && settings.apiKey) return settings.apiKey;
-  // 3. Return null if no key found
+  // 3. Also try legacy apiKey as a last resort (covers cases where user set one key for all providers)
+  if (settings.apiKey) return settings.apiKey;
+  // 4. Return null if no key found
   return null;
 }
 
@@ -511,47 +602,99 @@ export interface LLMCallOptions {
  * This function makes REAL API calls to the selected provider.
  * There is NO mock or fallback behavior.
  */
-export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<StreamChunk> {
-  const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
+/**
+ * Result of resolving which provider + API key to use for a request.
+ */
+interface ResolvedProvider {
+  provider: ProviderKey;
+  apiKey: string;
+  config: ProviderConfig;
+  isFallback: boolean;
+}
 
-  // ── Step 1: Get the configured provider and API key from settings ──
-  const settings = await getUserSettings();
-  const configuredProvider = (settings.provider || 'openrouter') as ProviderKey;
+/**
+ * Resolve the best available provider and API key from settings.
+ * Tries primary → secondary → tertiary → quaternary, returning the first one with a valid key.
+ */
+function resolveProvider(settings: Record<string, string>): ResolvedProvider | null {
+  const primaryProvider = (settings.provider || 'openrouter') as ProviderKey;
+  const primaryConfig = PROVIDER_CONFIGS[primaryProvider];
+  const primaryKey = getApiKeyForProvider(settings, primaryProvider);
 
-  // Resolve API key using per-provider key resolution with fallback
-  // 1. Try per-provider key for primary provider
-  // 2. Fall back to legacy single apiKey
-  // 3. If both empty, check secondary provider key
-  // 4. If still empty, show error
-  let apiKey = getApiKeyForProvider(settings, configuredProvider);
+  if (primaryKey && primaryConfig) {
+    return { provider: primaryProvider, apiKey: primaryKey, config: primaryConfig, isFallback: false };
+  }
 
-  if (!apiKey) {
-    // Try secondary provider key as fallback
-    const provider2 = settings.provider2 as ProviderKey | undefined;
-    if (provider2) {
-      apiKey = getApiKeyForProvider(settings, provider2);
+  // Try all fallback providers in order: provider2 → provider3 → provider4
+  const fallbackSlots: [string, ProviderKey | undefined][] = [
+    ['secondary', settings.provider2 as ProviderKey | undefined],
+    ['tertiary', settings.provider3 as ProviderKey | undefined],
+    ['quaternary', settings.provider4 as ProviderKey | undefined],
+  ];
+
+  for (const [slotName, fallbackProvider] of fallbackSlots) {
+    if (!fallbackProvider) continue;
+    const fallbackConfig = PROVIDER_CONFIGS[fallbackProvider];
+    const fallbackKey = getApiKeyForProvider(settings, fallbackProvider);
+    if (fallbackKey && fallbackConfig) {
+      console.log(`[LLM] Primary provider "${primaryProvider}" has no API key. Falling back to ${slotName} provider "${fallbackProvider}".`);
+      return { provider: fallbackProvider, apiKey: fallbackKey, config: fallbackConfig, isFallback: true };
     }
   }
 
-  if (!apiKey) {
-    yield { content: '', error: 'No API key configured. Please add your API key in Settings.', done: true };
+  return null;
+}
+
+export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<StreamChunk> {
+  const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
+
+  // ── Step 1: Resolve provider and API key from settings ──
+  const settings = await getUserSettings();
+  const resolved = resolveProvider(settings);
+
+  if (!resolved) {
+    const primaryProvider = settings.provider || 'openrouter';
+    const checkedProviders = [
+      primaryProvider,
+      settings.provider2,
+      settings.provider3,
+      settings.provider4,
+    ].filter(Boolean);
+    console.error(`[LLM] No API key found. Checked providers: ${checkedProviders.join(', ')}`);
+    yield {
+      content: '',
+      error: `No API key configured. Checked providers: ${checkedProviders.map(p => PROVIDER_CONFIGS[p as ProviderKey]?.name || p).join(', ')}. Please add an API key in ⚙️ Settings.`,
+      done: true,
+    };
     return;
   }
 
-  // ── Step 2: Determine the provider and model ──
-  let provider = configuredProvider;
+  const { provider, apiKey, config, isFallback } = resolved;
   let actualModel = model;
 
-  // For OpenRouter, the model ID is passed as-is to OpenRouter's API
-  // For direct providers, use their own config
-  const config = PROVIDER_CONFIGS[provider];
+  // If we're using a fallback provider and the model doesn't belong to it,
+  // use the fallback provider's default model instead
+  if (isFallback) {
+    const modelBelongsToProvider = config.models.some(m => m === actualModel) ||
+      actualModel.startsWith('openrouter/') && provider === 'openrouter';
+    if (!modelBelongsToProvider) {
+      const fallbackModel = config.testModel || config.models[0] || 'openrouter/auto';
+      console.log(`[LLM] Model "${actualModel}" not available on fallback provider "${provider}". Using "${fallbackModel}" instead.`);
+      yield { content: `⚠️ Switched to ${config.name} (${fallbackModel}) as fallback provider.\n\n`, done: false };
+      actualModel = fallbackModel;
+    }
+  }
+
   if (!config) {
     yield { content: '', error: `Unknown provider: ${provider}`, done: true };
     return;
   }
 
-  // ── Step 3: Route to the appropriate provider API ──
-  console.log(`[LLM] Streaming request: provider=${provider}, model=${actualModel}`);
+  // ── Step 2: Route to the appropriate provider API ──
+  console.log(`[LLM] Streaming request: provider=${provider} (key: ${apiKey ? apiKey.slice(0, 8) + '...' : 'NONE'}), model=${actualModel}, isFallback=${isFallback}`);
+
+  // Collect error info for potential secondary fallback
+  let primaryError: string | null = null;
 
   try {
     if (config.anthropicFormat) {
@@ -559,12 +702,12 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
     } else if (config.geminiFormat) {
       yield* streamGemini(apiKey, actualModel, messages, temperature, maxTokens);
     } else {
-      // OpenAI-compatible (OpenAI, DeepSeek, Qwen, Mistral, OpenRouter)
       yield* streamOpenAICompatible(config, apiKey, actualModel, messages, temperature, maxTokens);
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error(`[LLM] Fatal error calling ${config.name}:`, errorMsg);
+    primaryError = errorMsg;
 
     // Auto-retry with openrouter/auto if the model failed and we're on OpenRouter
     if (provider === 'openrouter' && actualModel !== 'openrouter/auto') {
@@ -575,8 +718,35 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
         return;
       } catch (retryError) {
         const retryMsg = retryError instanceof Error ? retryError.message : 'Unknown error';
-        yield { content: '', error: `Retry also failed: ${retryMsg}`, done: true };
-        return;
+        primaryError = `Retry also failed: ${retryMsg}`;
+      }
+    }
+
+    // If primary provider failed and we haven't tried secondary yet, try it now
+    if (!isFallback) {
+      const secondaryProvider = settings.provider2 as ProviderKey | undefined;
+      if (secondaryProvider) {
+        const secondaryConfig = PROVIDER_CONFIGS[secondaryProvider];
+        const secondaryKey = getApiKeyForProvider(settings, secondaryProvider);
+        if (secondaryKey && secondaryConfig) {
+          const fallbackModel = secondaryConfig.testModel || secondaryConfig.models[0] || 'openrouter/auto';
+          console.log(`[LLM] Primary provider failed. Retrying with secondary provider "${secondaryProvider}" model "${fallbackModel}"...`);
+          yield { content: `⚠️ ${config.name} failed (${primaryError}). Switching to ${secondaryConfig.name}...\n\n`, done: false };
+          try {
+            if (secondaryConfig.anthropicFormat) {
+              yield* streamAnthropic(secondaryKey, fallbackModel, messages, temperature, maxTokens);
+            } else if (secondaryConfig.geminiFormat) {
+              yield* streamGemini(secondaryKey, fallbackModel, messages, temperature, maxTokens);
+            } else {
+              yield* streamOpenAICompatible(secondaryConfig, secondaryKey, fallbackModel, messages, temperature, maxTokens);
+            }
+            return;
+          } catch (fallbackError) {
+            const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : 'Unknown error';
+            yield { content: '', error: `Both providers failed. Primary: ${primaryError}. Secondary: ${fallbackMsg}`, done: true };
+            return;
+          }
+        }
       }
     }
 

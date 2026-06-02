@@ -37,6 +37,13 @@ import {
   CreditCard,
   Gift,
   Search,
+  Eye,
+  Monitor,
+  ExternalLink,
+  AlertTriangle,
+  RotateCcw,
+  Settings,
+  Download,
 } from 'lucide-react';
 import { useAppStore, type AgentType, type ProjectFile } from '@/store';
 import { useStore, useChatState, useFileState, useUIState, useProjectState } from '@/store/hooks';
@@ -67,6 +74,38 @@ const previewCache = {
 // Quick check: does the text even contain code blocks?
 const CODE_BLOCK_INDICATOR = /```/;
 
+/**
+ * Extract ALL code blocks from text, categorized by language.
+ * Uses a robust extraction that handles both complete and streaming (incomplete) blocks.
+ */
+function extractAllCodeBlocks(text: string): { lang: string; content: string }[] {
+  const blocks: { lang: string; content: string }[] = [];
+
+  // Match complete code blocks: ```lang\n...```
+  // Also match incomplete blocks (during streaming): ```lang\n... (no closing ```)
+  const codeBlockPattern = /```(\w*)\n([\s\S]*?)(?:```|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = codeBlockPattern.exec(text)) !== null) {
+    const lang = (m[1] || '').toLowerCase();
+    const content = m[2];
+    if (content.trim().length > 0) {
+      blocks.push({ lang, content });
+    }
+  }
+
+  return blocks;
+}
+
+function classifyCodeBlock(lang: string, fileName?: string): 'html' | 'css' | 'js' | null {
+  const fn = (fileName || '').toLowerCase();
+  const l = lang.toLowerCase();
+
+  if (fn.endsWith('.html') || fn.endsWith('.htm') || l === 'html' || l === 'markup') return 'html';
+  if (fn.endsWith('.css') || fn.endsWith('.scss') || fn.endsWith('.less') || l === 'css' || l === 'scss' || l === 'less') return 'css';
+  if (fn.endsWith('.js') || fn.endsWith('.jsx') || fn.endsWith('.ts') || fn.endsWith('.tsx') || l === 'javascript' || l === 'js' || l === 'typescript' || l === 'ts') return 'js';
+  return null;
+}
+
 function extractPreviewContent(text: string): { html: string; css: string; js: string } | null {
   // Early exit: if text is short and contains no code block markers, skip entirely
   if (text.length < 20 && !CODE_BLOCK_INDICATOR.test(text)) return null;
@@ -80,34 +119,113 @@ function extractPreviewContent(text: string): { html: string; css: string; js: s
   let css = '';
   let js = '';
 
-  // Pattern 1: 📄 **filepath** followed by code block (handles both complete and incomplete blocks)
+  // Strategy 1: 📄 **filepath** headers — the format the system prompt instructs
   const emojiFilePattern = /📄\s*\*\*(.+?)\*\*\s*\n```(\w*)\n([\s\S]*?)(?:```|$)/g;
   let match: RegExpExecArray | null;
   while ((match = emojiFilePattern.exec(text)) !== null) {
-    const filePath = match[1].trim().toLowerCase();
+    const filePath = match[1].trim();
     const lang = match[2].toLowerCase();
     const content = match[3];
-    if (filePath.endsWith('.html') || filePath.endsWith('.htm') || lang === 'html' || lang === 'markup') {
-      html = content;
-    } else if (filePath.endsWith('.css') || filePath.endsWith('.scss') || filePath.endsWith('.less') || lang === 'css' || lang === 'scss' || lang === 'less') {
-      css = content;
-    } else if (filePath.endsWith('.js') || filePath.endsWith('.jsx') || filePath.endsWith('.ts') || filePath.endsWith('.tsx') || lang === 'javascript' || lang === 'js' || lang === 'typescript' || lang === 'ts') {
-      js = content;
+    const type = classifyCodeBlock(lang, filePath);
+    if (type === 'html' && !html) html = content;
+    else if (type === 'css' && !css) css = content;
+    else if (type === 'js' && !js) js = content;
+  }
+
+  // Strategy 2: **filepath** (bold, no emoji) — some models skip the emoji
+  if (!html || !css || !js) {
+    const boldFilePattern = /\*\*(.+?\.\w+)\*\*\s*\n```(\w*)\n([\s\S]*?)(?:```|$)/g;
+    while ((match = boldFilePattern.exec(text)) !== null) {
+      const filePath = match[1].trim();
+      const lang = match[2].toLowerCase();
+      const content = match[3];
+      // Skip if it looks like regular bold text, not a filename
+      if (!filePath.includes('.') && !filePath.includes('/')) continue;
+      const type = classifyCodeBlock(lang, filePath);
+      if (type === 'html' && !html) html = content;
+      else if (type === 'css' && !css) css = content;
+      else if (type === 'js' && !js) js = content;
     }
   }
 
-  // Pattern 2: Plain code blocks (without 📄 prefix) — fallback
+  // Strategy 3: Plain code blocks without file headers — use language tag to classify
+  if (!html || !css || !js) {
+    const allBlocks = extractAllCodeBlocks(text);
+    for (const block of allBlocks) {
+      const type = classifyCodeBlock(block.lang);
+      if (type === 'html' && !html) html = block.content;
+      else if (type === 'css' && !css) css = block.content;
+      else if (type === 'js' && !js) js = block.content;
+    }
+  }
+
+  // Strategy 4: Detect code blocks with no language tag that contain HTML
+  // Many models output ```\n<!DOCTYPE html>... without specifying "html"
   if (!html) {
-    const htmlMatch = text.match(/```(?:html|markup)\n([\s\S]*?)(?:```|$)/);
-    html = htmlMatch?.[1] || '';
+    const untypedBlockPattern = /```\n([\s\S]*?)(?:```|$)/g;
+    while ((match = untypedBlockPattern.exec(text)) !== null) {
+      const content = match[1];
+      if (content && (/<html[\s>]/i.test(content) || /<!DOCTYPE/i.test(content) || /<body[\s>]/i.test(content))) {
+        html = content;
+        break;
+      }
+    }
   }
-  if (!css) {
-    const cssMatch = text.match(/```(?:css|scss|less)\n([\s\S]*?)(?:```|$)/);
-    css = cssMatch?.[1] || '';
+
+  // Strategy 5: Look for raw HTML in the response (no code blocks at all)
+  // Some models just output HTML directly
+  if (!html && !css && !js) {
+    // Check if the text itself looks like an HTML document
+    if (/<html[\s>]/i.test(text) || /<!DOCTYPE/i.test(text)) {
+      // Extract the HTML document portion
+      const htmlStart = text.search(/<!DOCTYPE/i);
+      const htmlStart2 = text.search(/<html[\s>]/i);
+      const startIdx = htmlStart >= 0 ? htmlStart : htmlStart2;
+      if (startIdx >= 0) {
+        const htmlEnd = text.lastIndexOf('</html>');
+        if (htmlEnd > startIdx) {
+          html = text.substring(startIdx, htmlEnd + '</html>'.length);
+        } else {
+          // No closing </html> — might be still streaming, take everything from start
+          html = text.substring(startIdx);
+        }
+      }
+    }
   }
-  if (!js) {
-    const jsMatch = text.match(/```(?:javascript|js|typescript|ts)\n([\s\S]*?)(?:```|$)/);
-    js = jsMatch?.[1] || '';
+
+  // If we have an HTML file that is a self-contained document
+  // (has <!DOCTYPE html> or <html> tag), and no separate CSS/JS files were found,
+  // use the HTML as-is — it contains everything needed
+  if (html && !css && !js && (/<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html))) {
+    const result = { html, css: '', js: '' };
+    previewCache.lastInput = text;
+    previewCache.lastResult = result;
+    return result;
+  }
+
+  // If we only have HTML content (no full document), wrap it in a basic document
+  if (html && !css && !js && html.trim().length > 0) {
+    const result = { html, css, js };
+    previewCache.lastInput = text;
+    previewCache.lastResult = result;
+    return result;
+  }
+
+  // Strategy 6: Detect HTML tags in any untyped code block (even without ```html tag)
+  // Some models wrap HTML in generic code blocks
+  if (!html) {
+    const allBlocks = extractAllCodeBlocks(text);
+    for (const block of allBlocks) {
+      if (!block.lang && /<[a-zA-Z][^>]*>/.test(block.content) &&
+          (/<div[\s>]/i.test(block.content) || /<h[1-6][\s>]/i.test(block.content) ||
+           /<p[\s>]/i.test(block.content) || /<button[\s>]/i.test(block.content) ||
+           /<input[\s>]/i.test(block.content) || /<form[\s>]/i.test(block.content) ||
+           /<table[\s>]/i.test(block.content) || /<img[\s>]/i.test(block.content) ||
+           /<a[\s>]/i.test(block.content) || /<span[\s>]/i.test(block.content))) {
+        html = block.content;
+        break;
+      }
+    }
   }
 
   const result = (!html && !css && !js) ? null : { html, css, js };
@@ -173,11 +291,482 @@ const SUGGESTED_PROMPTS = [
   { label: 'Plan a microservice architecture', icon: <BookOpen className="size-4" /> },
 ];
 
+// ---------------------------------------------------------------------------
+// Error handling helpers – structured error marker for messages
+// ---------------------------------------------------------------------------
+
+interface ChatError {
+  type: 'network' | 'api' | 'abort' | 'model' | 'stream' | 'unknown';
+  message: string;
+  suggestions: string[];
+  originalMessage?: string; // The user's last message for retry
+}
+
+const ERROR_MARKER = '__CFORGE_ERROR__:';
+
+function encodeChatError(error: ChatError): string {
+  return `${ERROR_MARKER}${JSON.stringify(error)}`;
+}
+
+function decodeChatError(content: string): ChatError | null {
+  if (!content.startsWith(ERROR_MARKER)) return null;
+  try {
+    return JSON.parse(content.slice(ERROR_MARKER.length)) as ChatError;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ErrorCard – user-friendly error display with retry
+// ---------------------------------------------------------------------------
+
+function ErrorCard({
+  error,
+  onRetry,
+}: {
+  error: ChatError;
+  onRetry?: (originalMessage: string) => void;
+}) {
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = useCallback(() => {
+    if (error.originalMessage && onRetry) {
+      setRetrying(true);
+      onRetry(error.originalMessage);
+      // Reset retrying state after a brief delay in case the send doesn't trigger re-render
+      setTimeout(() => setRetrying(false), 2000);
+    }
+  }, [error.originalMessage, onRetry]);
+
+  const iconColor: Record<ChatError['type'], string> = {
+    network: 'text-red-400',
+    api: 'text-amber-400',
+    abort: 'text-zinc-400',
+    model: 'text-orange-400',
+    stream: 'text-red-400',
+    unknown: 'text-red-400',
+  };
+
+  const typeLabel: Record<ChatError['type'], string> = {
+    network: 'Network Error',
+    api: 'API Error',
+    abort: 'Request Cancelled',
+    model: 'Model Unavailable',
+    stream: 'Stream Interrupted',
+    unknown: 'Error',
+  };
+
+  return (
+    <div className="my-2 overflow-hidden rounded-xl border border-red-500/20 bg-red-500/5">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 border-b border-red-500/10 bg-red-500/10 px-4 py-2.5">
+        <div className={`flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500/15 ${iconColor[error.type]}`}>
+          <AlertTriangle className="size-4" />
+        </div>
+        <div className="flex flex-col min-w-0">
+          <span className="text-xs font-semibold text-red-300">{typeLabel[error.type]}</span>
+          <span className="text-[11px] text-red-400/70 line-clamp-1">{error.message}</span>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 py-3 space-y-3">
+        {/* Error message */}
+        <p className="text-sm leading-relaxed text-zinc-300">{error.message}</p>
+
+        {/* Suggestions */}
+        {error.suggestions.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Suggested Actions</span>
+            <ul className="space-y-1">
+              {error.suggestions.map((suggestion, idx) => (
+                <li key={idx} className="flex items-start gap-2 text-xs text-zinc-400">
+                  <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-amber-400/60" />
+                  {suggestion}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Retry button */}
+        {error.originalMessage && onRetry && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-red-500/20 bg-red-500/5 text-red-300 hover:bg-red-500/15 hover:text-red-200 hover:border-red-500/30"
+            onClick={handleRetry}
+            disabled={retrying}
+          >
+            <RotateCcw className={`size-3.5 ${retrying ? 'animate-spin' : ''}`} />
+            {retrying ? 'Retrying...' : 'Retry'}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Maximum messages to render in the DOM at once (message windowing)
 const VISIBLE_MESSAGE_LIMIT = 50;
 
 // Throttle interval for preview updates during streaming
-const PREVIEW_THROTTLE_MS = 500;
+const PREVIEW_THROTTLE_MS = 300;
+
+// ---------------------------------------------------------------------------
+// Console capture script injected into inline preview iframes
+// ---------------------------------------------------------------------------
+
+const CONSOLE_CAPTURE_SCRIPT = `
+<script>
+(function() {
+  var _id = 0;
+  function send(level, args) {
+    try {
+      var strs = [];
+      for (var i = 0; i < args.length; i++) {
+        try {
+          var a = args[i];
+          if (a === null) strs.push('null');
+          else if (a === undefined) strs.push('undefined');
+          else if (typeof a === 'object') {
+            try { strs.push(JSON.stringify(a, null, 2)); }
+            catch(e) { strs.push(String(a)); }
+          }
+          else strs.push(String(a));
+        } catch(e) { strs.push('[unknown]'); }
+      }
+      window.parent.postMessage({
+        type: '__preview_console',
+        level: level,
+        args: strs,
+        id: ++_id,
+        ts: Date.now()
+      }, '*');
+    } catch(e) {}
+  }
+  var origLog = console.log;
+  var origWarn = console.warn;
+  var origError = console.error;
+  var origInfo = console.info;
+  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
+  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
+  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
+  console.info = function() { send('info', arguments); origInfo.apply(console, arguments); };
+  window.onerror = function(msg, src, line, col, err) {
+    send('error', [msg + ' (line ' + line + ':' + col + ')']);
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function(e) {
+    send('error', ['Unhandled Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason))]);
+  });
+})();
+<\/script>
+`;
+
+// ---------------------------------------------------------------------------
+// buildSrcdocForInline – builds a self-contained HTML document for the inline
+// preview iframe (extracted from LivePreview's buildSrcdoc)
+// ---------------------------------------------------------------------------
+
+function buildSrcdocForInline(html: string, css: string, js: string): string {
+  // ── Always strip external CSS/JS file references from HTML ──
+  let cleanedHtml = html;
+
+  // Remove <link> tags referencing local CSS files
+  cleanedHtml = cleanedHtml.replace(
+    /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
+    (match, href: string) => {
+      if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
+        return match;
+      }
+      return '';
+    }
+  );
+
+  // Remove <script src="..."> tags referencing local JS files
+  cleanedHtml = cleanedHtml.replace(
+    /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
+    (match, src: string) => {
+      if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+        return match;
+      }
+      return '';
+    }
+  );
+
+  // Also remove self-closing <script src="..."/> variants
+  cleanedHtml = cleanedHtml.replace(
+    /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*\/>/gi,
+    (match, src: string) => {
+      if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+        return match;
+      }
+      return '';
+    }
+  );
+
+  // Clean up empty lines
+  cleanedHtml = cleanedHtml.replace(/\n\s*\n\s*\n/g, '\n\n');
+
+  // Self-contained document with no separate CSS/JS → use as-is (with refs already stripped)
+  if (cleanedHtml && !css && !js && (/<html[\s>]/i.test(cleanedHtml) || /<!DOCTYPE/i.test(cleanedHtml))) {
+    let doc = cleanedHtml;
+    if (/<head[\s>]/i.test(doc)) {
+      doc = doc.replace(
+        /(<head[^>]*>)/i,
+        `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
+      );
+    } else {
+      doc = doc.replace(
+        /(<html[^>]*>)/i,
+        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
+      );
+    }
+    return doc;
+  }
+
+  const isFullDocument =
+    /<!DOCTYPE\s+html/i.test(cleanedHtml) ||
+    /<html[\s>]/i.test(cleanedHtml);
+
+  if (isFullDocument) {
+    let doc = cleanedHtml;
+
+    // Inject console capture script
+    if (/<head[\s>]/i.test(doc)) {
+      doc = doc.replace(
+        /(<head[^>]*>)/i,
+        `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
+      );
+    } else {
+      doc = doc.replace(
+        /(<html[^>]*>)/i,
+        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
+      );
+    }
+
+    // Inject inline CSS
+    if (css) {
+      const styleBlock = `\n<style>\n${css}\n</style>`;
+      if (/<\/head>/i.test(doc)) {
+        doc = doc.replace(/<\/head>/i, `${styleBlock}\n</head>`);
+      } else if (/<head[^>]*>/i.test(doc)) {
+        doc = doc.replace(/(<head[^>]*>)/i, `$1${styleBlock}`);
+      }
+    }
+
+    // Inject inline JS
+    if (js) {
+      const scriptBlock = `\n<script>\ntry {\n${js}\n} catch(e) {\n  document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';\n}\n</script>`;
+      if (/<\/body>/i.test(doc)) {
+        doc = doc.replace(/<\/body>/i, `${scriptBlock}\n</body>`);
+      } else {
+        doc = doc.replace(/<\/html>/i, `${scriptBlock}\n</html>`);
+      }
+    }
+
+    return doc;
+  }
+
+  // HTML fragment: wrap in a complete document
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${css ? `<style>\n${css}\n</style>` : ''}
+  ${CONSOLE_CAPTURE_SCRIPT}
+</head>
+<body>
+  ${cleanedHtml}
+  ${js ? `<script>\ntry {\n${js}\n} catch(e) {\n  document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';\n}\n</script>` : ''}
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// InlinePreview – embedded iframe preview inside chat message bubbles
+// ---------------------------------------------------------------------------
+
+const InlinePreview = React.memo(function InlinePreview({
+  html,
+  css,
+  js,
+}: {
+  html: string;
+  css: string;
+  js: string;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeKey, setIframeKey] = useState(0);
+
+  const srcdoc = useMemo(
+    () => buildSrcdocForInline(html, css, js),
+    [html, css, js]
+  );
+
+  const handleOpenFull = useCallback(() => {
+    const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+    setPreviewFiles({ html, css, js });
+    setIsPreviewOpen(true);
+  }, [html, css, js]);
+
+  const handleRefresh = useCallback(() => {
+    setIframeKey((k) => k + 1);
+  }, []);
+
+  const handleDownload = useCallback(async () => {
+    if (!html && !css && !js) return;
+
+    try {
+      let cleanHtml = html || '';
+      const cleanCss = css || '';
+      const cleanJs = js || '';
+
+      const hasMultipleFiles = (cleanCss && cleanHtml) || (cleanJs && cleanHtml);
+
+      if (hasMultipleFiles) {
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+
+        let modifiedHtml = cleanHtml;
+        if (cleanCss) {
+          modifiedHtml = modifiedHtml.replace(
+            /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
+            (match: string, href: string) => {
+              if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) return match;
+              return '';
+            }
+          );
+          if (/<head[\s>]/i.test(modifiedHtml)) {
+            modifiedHtml = modifiedHtml.replace(/(<head[^>]*>)/i, '$1\n  <link rel="stylesheet" href="styles.css">');
+          }
+          zip.file('styles.css', cleanCss);
+        }
+        if (cleanJs) {
+          modifiedHtml = modifiedHtml.replace(
+            /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
+            (match: string, src: string) => {
+              if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) return match;
+              return '';
+            }
+          );
+          if (/<\/body>/i.test(modifiedHtml)) {
+            modifiedHtml = modifiedHtml.replace(/<\/body>/i, '  <script src="script.js"></script>\n</body>');
+          }
+          zip.file('script.js', cleanJs);
+        }
+
+        modifiedHtml = modifiedHtml.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
+
+        if (!/<html[\s>]/i.test(modifiedHtml) && !/<!DOCTYPE/i.test(modifiedHtml)) {
+          modifiedHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${cleanCss ? '  <link rel="stylesheet" href="styles.css">' : ''}\n</head>\n<body>\n${modifiedHtml}\n  ${cleanJs ? '<script src="script.js"></script>' : ''}\n</body>\n</html>`;
+        }
+
+        zip.file('index.html', modifiedHtml);
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'codeforge-project.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Download started!', { description: 'codeforge-project.zip' });
+      } else {
+        const srcdocContent = buildSrcdocForInline(cleanHtml, cleanCss, cleanJs);
+        const cleanSrcdoc = srcdocContent.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
+
+        const blob = new Blob([cleanSrcdoc], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'codeforge-preview.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Download started!', { description: 'codeforge-preview.html' });
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error('Download failed', { description: 'Please try again.' });
+    }
+  }, [html, css, js]);
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-900">
+      {/* Header bar */}
+      <div className="flex items-center justify-between border-b border-zinc-700/50 bg-zinc-800/80 px-2.5 py-1">
+        <div className="flex items-center gap-1.5">
+          <Monitor className="size-3 text-emerald-400" />
+          <span className="text-[11px] font-medium text-zinc-300">Preview</span>
+          <span className="flex items-center gap-1 rounded-sm bg-emerald-500/15 px-1 py-0.5 text-[8px] font-bold text-emerald-400">
+            <span className="size-1 rounded-full bg-emerald-400" />
+            LIVE
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 gap-1 px-1.5 text-[10px] text-zinc-400 hover:text-emerald-400"
+                onClick={handleRefresh}
+              >
+                <RefreshCw className="size-2.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">Refresh</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 gap-1 px-1.5 text-[10px] text-zinc-400 hover:text-emerald-400"
+                onClick={handleDownload}
+              >
+                <Download className="size-2.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">Download</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 gap-1 px-1.5 text-[10px] text-zinc-400 hover:text-emerald-400"
+                onClick={handleOpenFull}
+              >
+                <ExternalLink className="size-2.5" />
+                <span>Open Full</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">Open in full preview panel</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+      {/* Iframe */}
+      <div className="relative" style={{ height: 280 }}>
+        <iframe
+          ref={iframeRef}
+          key={iframeKey}
+          srcDoc={srcdoc}
+          sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
+          title="Inline Preview"
+          className="h-full w-full border-0 rounded-b-lg bg-white"
+        />
+      </div>
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -204,7 +793,7 @@ function LoadingDots() {
 }
 
 // ---------------------------------------------------------------------------
-// CodeBlock – syntax‑highlighted code with copy & apply buttons
+// CodeBlock – syntax‑highlighted code with copy, apply & preview buttons
 // ---------------------------------------------------------------------------
 
 const CodeBlock = React.memo(function CodeBlock({
@@ -218,6 +807,15 @@ const CodeBlock = React.memo(function CodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
 
+  // Determine if this code can be previewed in the live preview
+  const isPreviewable = useMemo(() => {
+    const lang = language.toLowerCase();
+    if (['html', 'htm', 'markup'].includes(lang)) return true;
+    // Also check if the content looks like a complete HTML document
+    if (!lang && (code.includes('<!DOCTYPE') || code.includes('<html'))) return true;
+    return false;
+  }, [language, code]);
+
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(code);
@@ -228,12 +826,29 @@ const CodeBlock = React.memo(function CodeBlock({
     }
   }, [code]);
 
+  const handlePreview = useCallback(() => {
+    const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+    setPreviewFiles({ html: code, css: '', js: '' });
+    setIsPreviewOpen(true);
+  }, [code]);
+
   return (
     <div className="group relative my-3 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-950">
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-zinc-700/50 bg-zinc-900/80 px-4 py-1.5">
         <span className="text-xs font-medium text-zinc-400">{language || 'text'}</span>
         <div className="flex items-center gap-1">
+          {isPreviewable && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-2 text-xs text-zinc-400 hover:text-emerald-400"
+              onClick={handlePreview}
+            >
+              <Eye className="size-3" />
+              Preview
+            </Button>
+          )}
           {onApply && (
             <Button
               variant="ghost"
@@ -822,21 +1437,23 @@ function FileCreateBar({
         const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
         return ['html', 'htm'].includes(ext);
       });
-      const cssFile = createdFiles.find((f) => {
+      // Combine multiple CSS files
+      const cssFiles = createdFiles.filter((f) => {
         const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
         return ['css', 'scss', 'less'].includes(ext);
       });
-      const jsFile = createdFiles.find((f) => {
+      // Combine multiple JS files
+      const jsFiles = createdFiles.filter((f) => {
         const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-        return ['js', 'jsx', 'ts', 'tsx'].includes(ext);
+        return ['js', 'jsx'].includes(ext);
       });
 
-      if (htmlFile || cssFile || jsFile) {
+      if (htmlFile || cssFiles.length > 0 || jsFiles.length > 0) {
         const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
         setPreviewFiles({
           html: htmlFile?.content ?? '',
-          css: cssFile?.content ?? '',
-          js: jsFile?.content ?? '',
+          css: cssFiles.map(f => `/* ${f.name} */\n${f.content}`).join('\n\n'),
+          js: jsFiles.map(f => `// ${f.name}\n${f.content}`).join('\n\n'),
         });
         setIsPreviewOpen(true);
       }
@@ -961,6 +1578,7 @@ const MessageBubble = React.memo(function MessageBubble({
   responseTime,
   onApplyCode,
   onFilesCreated,
+  onRetry,
 }: {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -968,8 +1586,63 @@ const MessageBubble = React.memo(function MessageBubble({
   responseTime?: number;
   onApplyCode?: (code: string) => void;
   onFilesCreated?: (files: ProjectFile[]) => void;
+  onRetry?: (originalMessage: string) => void;
 }) {
   const isUser = role === 'user';
+
+  // Check if the content contains error marker(s)
+  const errorParts = useMemo(() => {
+    const parts: { type: 'text' | 'error'; content: string }[] = [];
+    const marker = ERROR_MARKER;
+    let remaining = content;
+    while (remaining.includes(marker)) {
+      const markerIdx = remaining.indexOf(marker);
+      // Push any text before the marker
+      if (markerIdx > 0) {
+        parts.push({ type: 'text', content: remaining.slice(0, markerIdx) });
+      }
+      // Try to parse the error JSON after the marker
+      const afterMarker = remaining.slice(markerIdx + marker.length);
+      try {
+        // Find the end of the JSON object — it could be followed by more text
+        let depth = 0;
+        let jsonEnd = -1;
+        for (let i = 0; i < afterMarker.length; i++) {
+          if (afterMarker[i] === '{') depth++;
+          else if (afterMarker[i] === '}') {
+            depth--;
+            if (depth === 0) { jsonEnd = i + 1; break; }
+          }
+        }
+        if (jsonEnd > 0) {
+          const jsonStr = afterMarker.slice(0, jsonEnd);
+          const parsed = JSON.parse(jsonStr) as ChatError;
+          parts.push({ type: 'error', content: jsonStr });
+          remaining = afterMarker.slice(jsonEnd);
+        } else {
+          // Can't find JSON end — treat rest as error
+          parts.push({ type: 'error', content: afterMarker });
+          remaining = '';
+        }
+      } catch {
+        // If parsing fails, push the rest as text
+        parts.push({ type: 'text', content: remaining });
+        remaining = '';
+      }
+    }
+    // Push any remaining text
+    if (remaining.trim()) {
+      parts.push({ type: 'text', content: remaining });
+    }
+    // If no markers found at all, return the whole content as text
+    if (parts.length === 0) {
+      parts.push({ type: 'text', content });
+    }
+    return parts;
+  }, [content]);
+
+  // Check if the entire message is just an error (no text parts)
+  const isPureError = errorParts.length === 1 && errorParts[0].type === 'error';
 
   return (
     <motion.div
@@ -983,10 +1656,12 @@ const MessageBubble = React.memo(function MessageBubble({
         className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
           isUser
             ? 'bg-zinc-700 text-zinc-300'
-            : 'bg-emerald-500/15 text-emerald-400'
+            : isPureError
+              ? 'bg-red-500/15 text-red-400'
+              : 'bg-emerald-500/15 text-emerald-400'
         }`}
       >
-        {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
+        {isUser ? <User className="size-4" /> : isPureError ? <AlertTriangle className="size-4" /> : <Bot className="size-4" />}
       </div>
 
       {/* Content */}
@@ -998,10 +1673,10 @@ const MessageBubble = React.memo(function MessageBubble({
         {/* Sender label with model info */}
         <span
           className={`text-[11px] font-medium ${
-            isUser ? 'text-zinc-500' : 'text-emerald-400/80'
+            isUser ? 'text-zinc-500' : isPureError ? 'text-red-400/80' : 'text-emerald-400/80'
           }`}
         >
-          {isUser ? 'You' : (
+          {isUser ? 'You' : isPureError ? 'CodeForge AI — Error' : (
             <>
               CodeForge AI
               {model && (
@@ -1024,15 +1699,59 @@ const MessageBubble = React.memo(function MessageBubble({
           {isUser ? (
             <p className="whitespace-pre-wrap">{content}</p>
           ) : (
-            <MarkdownRenderer content={content} onApplyCode={onApplyCode} />
+            <>
+              {errorParts.map((part, idx) =>
+                part.type === 'text' ? (
+                  <React.Fragment key={idx}>
+                    <MarkdownRenderer content={part.content} onApplyCode={onApplyCode} />
+                    {/* Inline HTML preview for text parts */}
+                    {(() => {
+                      const previewContent = extractPreviewContent(part.content);
+                      return previewContent && (previewContent.html || previewContent.css || previewContent.js) ? (
+                        <InlinePreview html={previewContent.html} css={previewContent.css} js={previewContent.js} />
+                      ) : null;
+                    })()}
+                  </React.Fragment>
+                ) : (
+                  <ErrorCard
+                    key={idx}
+                    error={decodeChatError(ERROR_MARKER + part.content) ?? {
+                      type: 'unknown',
+                      message: part.content,
+                      suggestions: [],
+                    }}
+                    onRetry={onRetry}
+                  />
+                )
+              )}
+            </>
           )}
           {/* File auto-creation bar for AI messages */}
-          {!isUser && onFilesCreated && (
+          {!isUser && onFilesCreated && !isPureError && (
             <FileCreateBar content={content} onFilesCreated={onFilesCreated} />
           )}
         </div>
+        {/* HTML preview available banner — only for non-error messages */}
+        {!isUser && !isPureError && extractPreviewContent(content) && (extractPreviewContent(content)!.html || extractPreviewContent(content)!.css || extractPreviewContent(content)!.js) && (
+          <button
+            onClick={() => {
+              const pc = extractPreviewContent(content);
+              if (pc) {
+                const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+                setPreviewFiles(pc);
+                setIsPreviewOpen(true);
+              }
+            }}
+            className="mt-1 flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-all hover:bg-emerald-500/20 hover:border-emerald-500/50 w-fit"
+          >
+            <Eye className="size-3" />
+            <span>HTML preview available</span>
+            <span className="text-emerald-400/60">—</span>
+            <span className="underline underline-offset-2">Open Preview Panel</span>
+          </button>
+        )}
         {/* Response time indicator for AI messages */}
-        {!isUser && responseTime !== undefined && responseTime > 0 && (
+        {!isUser && !isPureError && responseTime !== undefined && responseTime > 0 && (
           <span className="flex items-center gap-1 text-[10px] text-zinc-600">
             <Activity className="size-2.5" />
             Done · {responseTime.toFixed(1)}s
@@ -1139,6 +1858,13 @@ const StreamingMessage = React.memo(function StreamingMessage({
           <MarkdownRenderer content={content} onApplyCode={onApplyCode} />
           {/* Blinking cursor */}
           <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
+          {/* Inline HTML preview */}
+          {(() => {
+            const previewContent = extractPreviewContent(content);
+            return previewContent && (previewContent.html || previewContent.css || previewContent.js) ? (
+              <InlinePreview html={previewContent.html} css={previewContent.css} js={previewContent.js} />
+            ) : null;
+          })()}
         </div>
       </div>
     </motion.div>
@@ -1355,6 +2081,8 @@ export default function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef<string>('');
+  const streamingHadErrorRef = useRef<string | null>(null);
+  const streamStartRef = useRef<number>(0);
   const [streamingContent, setStreamingContent] = useState<string>('');
   const deferredStreamingContent = useDeferredValue(streamingContent);
   const [streamingModel, setStreamingModel] = useState<string>('');
@@ -1368,6 +2096,7 @@ export default function ChatPanel() {
   // Throttle refs for preview updates
   const lastPreviewUpdateRef = useRef(0);
   const pendingPreviewContentRef = useRef<string>('');
+  const pendingPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check scroll position to show/hide scroll buttons
   const handleScroll = useCallback(() => {
@@ -1435,22 +2164,45 @@ export default function ChatPanel() {
   // Throttled preview update function
   const throttledPreviewUpdate = useCallback((content: string) => {
     const now = Date.now();
-    if (now - lastPreviewUpdateRef.current >= PREVIEW_THROTTLE_MS) {
-      lastPreviewUpdateRef.current = now;
-      const previewContent = extractPreviewContent(content);
-      if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+    const previewContent = extractPreviewContent(content);
+    // Always update if we have previewable content (HTML detected)
+    if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
+      // Use shorter throttle if we have HTML content (more urgent to show preview)
+      const throttleMs = previewContent.html ? PREVIEW_THROTTLE_MS / 2 : PREVIEW_THROTTLE_MS;
+      if (now - lastPreviewUpdateRef.current >= throttleMs) {
+        lastPreviewUpdateRef.current = now;
         const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
         setPreviewFiles(previewContent);
         setIsPreviewOpen(true);
+      } else {
+        // Store the latest content and schedule a flush after the throttle window
+        pendingPreviewContentRef.current = content;
+        if (!pendingPreviewTimerRef.current) {
+          pendingPreviewTimerRef.current = setTimeout(() => {
+            pendingPreviewTimerRef.current = null;
+            if (pendingPreviewContentRef.current) {
+              const pendingContent = extractPreviewContent(pendingPreviewContentRef.current);
+              if (pendingContent && (pendingContent.html || pendingContent.css || pendingContent.js)) {
+                const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
+                setPreviewFiles(pendingContent);
+                setIsPreviewOpen(true);
+              }
+              lastPreviewUpdateRef.current = Date.now();
+              pendingPreviewContentRef.current = '';
+            }
+          }, throttleMs);
+        }
       }
-    } else {
-      // Store the latest content for the next throttle window
-      pendingPreviewContentRef.current = content;
     }
   }, []);
 
   // Flush any pending preview update
   const flushPreviewUpdate = useCallback((content: string) => {
+    // Clear any pending throttle timer
+    if (pendingPreviewTimerRef.current) {
+      clearTimeout(pendingPreviewTimerRef.current);
+      pendingPreviewTimerRef.current = null;
+    }
     const previewContent = extractPreviewContent(content);
     if (previewContent && (previewContent.html || previewContent.css || previewContent.js)) {
       const { setPreviewFiles, setIsPreviewOpen } = useAppStore.getState();
@@ -1488,12 +2240,22 @@ export default function ChatPanel() {
 
       // Call API with streaming
       setIsChatLoading(true);
-      setStreamStartTime(Date.now());
+      const startTime = Date.now();
+      setStreamStartTime(startTime);
+      streamStartRef.current = startTime;
       streamingContentRef.current = '';
+      streamingHadErrorRef.current = null;
       setStreamingContent('');
       setStreamingModel('');
       lastPreviewUpdateRef.current = 0;
       pendingPreviewContentRef.current = '';
+      if (pendingPreviewTimerRef.current) {
+        clearTimeout(pendingPreviewTimerRef.current);
+        pendingPreviewTimerRef.current = null;
+      }
+      // Clear the preview content cache so it re-extracts for new messages
+      previewCache.lastInput = '';
+      previewCache.lastResult = null;
 
       try {
         const conversationId = currentConversation?.id ?? userMessage.id;
@@ -1522,7 +2284,22 @@ export default function ChatPanel() {
         });
 
         if (!res.ok) {
-          throw new Error(`API error: ${res.status}`);
+          const statusText = res.statusText || 'Unknown error';
+          let apiErrorMsg = `API error: ${res.status}`;
+          if (res.status === 401) {
+            apiErrorMsg = 'Authentication failed — your API key may be invalid or missing.';
+          } else if (res.status === 403) {
+            apiErrorMsg = 'Access denied — you may not have permission to use this model.';
+          } else if (res.status === 429) {
+            apiErrorMsg = 'Rate limit exceeded — too many requests. Please wait and try again.';
+          } else if (res.status === 500) {
+            apiErrorMsg = `Server error (${res.status}): The AI provider is experiencing issues.`;
+          } else if (res.status === 502 || res.status === 503) {
+            apiErrorMsg = `Service unavailable (${res.status}): The AI provider is temporarily down.`;
+          } else {
+            apiErrorMsg = `API error ${res.status}: ${statusText}`;
+          }
+          throw new Error(apiErrorMsg);
         }
 
         // Check if the response is a stream
@@ -1535,13 +2312,18 @@ export default function ChatPanel() {
           const decoder = new TextDecoder();
           let fullContent = '';
           let lastModel = selectedModel;
+          // SSE line buffer — prevents losing tokens split across TCP chunks
+          let sseBuffer = '';
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+            // Append to buffer and split by newlines
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split('\n');
+            // Keep the last (potentially incomplete) line in the buffer
+            sseBuffer = lines.pop() || '';
 
             for (const line of lines) {
               const trimmed = line.trim();
@@ -1555,6 +2337,8 @@ export default function ChatPanel() {
                     fullContent += `\n\n⚠️ Error: ${parsed.error}`;
                     setStreamingContent(fullContent);
                     streamingContentRef.current = fullContent;
+                    // Track that we saw an API error during streaming
+                    streamingHadErrorRef.current = parsed.error;
                   } else if (parsed.content) {
                     fullContent += parsed.content;
                     setStreamingContent(fullContent);
@@ -1568,8 +2352,29 @@ export default function ChatPanel() {
                     setStreamingModel(lastModel);
                   }
                 } catch {
-                  // Not valid JSON — ignore
+                  // Not valid JSON — ignore (may be partial)
                 }
+              }
+            }
+          }
+
+          // Process any remaining data in the buffer
+          if (sseBuffer.trim()) {
+            const trimmed = sseBuffer.trim();
+            if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+              try {
+                const parsed = JSON.parse(trimmed.slice(6));
+                if (parsed.content) {
+                  fullContent += parsed.content;
+                  setStreamingContent(fullContent);
+                  streamingContentRef.current = fullContent;
+                }
+                if (parsed.model) {
+                  lastModel = parsed.model;
+                  setStreamingModel(lastModel);
+                }
+              } catch {
+                // Incomplete JSON — ignore
               }
             }
           }
@@ -1578,11 +2383,27 @@ export default function ChatPanel() {
           flushPreviewUpdate(fullContent);
 
           // Finalize the streaming message
-          const responseTimeSec = ((Date.now() - streamStartTime) / 1000);
+          const responseTimeSec = ((Date.now() - streamStartRef.current) / 1000);
+
+          // If the stream contained an API error, convert to a structured error message
+          const streamError = streamingHadErrorRef.current;
+          const finalContent = streamError
+            ? encodeChatError({
+                type: 'api',
+                message: streamError,
+                suggestions: [
+                  'Check your API key in Settings',
+                  'Try a different model from the model selector',
+                  'Verify the model is available and not rate-limited',
+                ],
+                originalMessage: message,
+              })
+            : (fullContent || 'No response received.');
+
           const assistantMessage = {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
-            content: fullContent || 'No response received.',
+            content: finalContent,
             tokens: Math.ceil(message.length / 4) + Math.ceil(fullContent.length / 4),
             model: lastModel,
             responseTime: responseTimeSec,
@@ -1593,7 +2414,7 @@ export default function ChatPanel() {
           // Handle JSON response (non-streaming fallback)
           const data = await res.json();
           const responseContent = data.message ?? data.content ?? 'No response received.';
-          const responseTimeSec = ((Date.now() - streamStartTime) / 1000);
+          const responseTimeSec = ((Date.now() - streamStartRef.current) / 1000);
           const assistantMessage = {
             id: crypto.randomUUID(),
             role: 'assistant' as const,
@@ -1617,7 +2438,7 @@ export default function ChatPanel() {
         if ((error as Error).name === 'AbortError') {
           // User cancelled — finalize what we have
           if (streamingContentRef.current) {
-            const responseTimeSec = ((Date.now() - streamStartTime) / 1000);
+            const responseTimeSec = ((Date.now() - streamStartRef.current) / 1000);
             const assistantMessage = {
               id: crypto.randomUUID(),
               role: 'assistant' as const,
@@ -1629,23 +2450,90 @@ export default function ChatPanel() {
             };
             addMessageToConversation(assistantMessage);
           }
-          toast.info('Generation stopped', { duration: 2000 });
+          toast.info('Request was cancelled.', { duration: 2000 });
         } else {
           const errStr = (error as Error)?.message || String(error);
+          const isNetworkError = errStr.includes('network') || errStr.includes('fetch') || errStr.includes('Failed to fetch') || errStr.includes('NetworkError') || errStr.includes('ERR_INTERNET_DISCONNECTED') || errStr.includes('net::');
           const isModelError = errStr.toLowerCase().includes('no endpoints') ||
             errStr.toLowerCase().includes('not available') ||
             errStr.toLowerCase().includes('model not found') ||
             errStr.includes('404');
 
-          const errorMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant' as const,
-            content: isModelError
-              ? `⚠️ **Model unavailable**: The model "${selectedModel}" currently has no available endpoints.\n\n**Suggestions:**\n- Try switching to **openrouter/auto** (auto-routes to the best available model)\n- Select a different model from the model selector\n- Free models can be temporarily unavailable — try again later\n\nClick the model selector in the top-right to change models.`
-              : `Sorry, I encountered an error processing your request. Please check your API key and try again.\n\n**Error:** ${errStr}`,
-            createdAt: new Date().toISOString(),
-          };
-          addMessageToConversation(errorMessage);
+          // If we already have streaming content, save it with a stream-interrupted error card
+          if (streamingContentRef.current && streamingContentRef.current.length > 10) {
+            const responseTimeSec = ((Date.now() - streamStartRef.current) / 1000);
+            const assistantMessage = {
+              id: crypto.randomUUID(),
+              role: 'assistant' as const,
+              content: streamingContentRef.current +
+                '\n\n' +
+                encodeChatError({
+                  type: 'stream',
+                  message: 'The AI stream was interrupted. Partial response is shown above.',
+                  suggestions: [
+                    'Check your internet connection',
+                    'Try a different model from the model selector',
+                    'Click Retry to resend your message',
+                  ],
+                  originalMessage: message,
+                }),
+              tokens: Math.ceil(streamingContentRef.current.length / 4),
+              model: streamingModel || selectedModel,
+              responseTime: responseTimeSec,
+              createdAt: new Date().toISOString(),
+            };
+            addMessageToConversation(assistantMessage);
+
+            // Try to extract preview from partial content too
+            flushPreviewUpdate(streamingContentRef.current);
+          } else {
+            // No streaming content — show a dedicated error card
+            let chatError: ChatError;
+
+            if (isNetworkError) {
+              chatError = {
+                type: 'network',
+                message: 'Could not reach the server. Check your internet connection.',
+                suggestions: [
+                  'Verify your internet connection is active',
+                  'Check your API key in Settings',
+                  'The provider might be temporarily down — try again in a moment',
+                  'Try a different model from the model selector',
+                ],
+                originalMessage: message,
+              };
+            } else if (isModelError) {
+              chatError = {
+                type: 'model',
+                message: `The model "${selectedModel}" is currently unavailable.`,
+                suggestions: [
+                  'Try switching to openrouter/auto (auto-routes to the best available model)',
+                  'Select a different model from the model selector',
+                  'Free models can be temporarily unavailable — try again later',
+                ],
+                originalMessage: message,
+              };
+            } else {
+              chatError = {
+                type: 'unknown',
+                message: `Something went wrong: ${errStr}`,
+                suggestions: [
+                  'Check your API key in Settings',
+                  'Try a different model from the model selector',
+                  'If the problem persists, try starting a new conversation',
+                ],
+                originalMessage: message,
+              };
+            }
+
+            const errorMessage = {
+              id: crypto.randomUUID(),
+              role: 'assistant' as const,
+              content: encodeChatError(chatError),
+              createdAt: new Date().toISOString(),
+            };
+            addMessageToConversation(errorMessage);
+          }
           console.error('Chat API error:', error);
         }
       } finally {
@@ -1653,6 +2541,7 @@ export default function ChatPanel() {
         setStreamingContent('');
         setStreamingModel('');
         streamingContentRef.current = '';
+        streamingHadErrorRef.current = null;
         abortControllerRef.current = null;
       }
     },
@@ -1697,9 +2586,10 @@ export default function ChatPanel() {
           responseTime={msg.responseTime}
           onApplyCode={msg.role === 'assistant' ? handleApplyCode : undefined}
           onFilesCreated={msg.role === 'assistant' ? handleFilesCreated : undefined}
+          onRetry={msg.role === 'assistant' ? handleSend : undefined}
         />
       )),
-    [visibleMessages, handleApplyCode, handleFilesCreated],
+    [visibleMessages, handleApplyCode, handleFilesCreated, handleSend],
   );
 
   const isEmpty = messages.length === 0 && !isChatLoading;

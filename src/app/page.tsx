@@ -408,7 +408,7 @@ export default function Home() {
                   {isPreviewOpen && (
                     <>
                       <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
-                      <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+                      <ResizablePanel defaultSize={35} minSize={20} maxSize={60}>
                         <Suspense fallback={<PanelSkeleton />}>
                           <LivePreview />
                         </Suspense>
@@ -553,7 +553,7 @@ export default function Home() {
           </Tooltip>
 
           <span className="text-[10px] text-zinc-600">
-            Powered by Z.ai
+            CodeForge AI
           </span>
         </div>
       </footer>

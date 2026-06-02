@@ -32,8 +32,10 @@ import {
   Info,
   AlertTriangle,
   Trash2,
+  Download,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -242,29 +244,144 @@ export default function LivePreview() {
 
   const isEmpty = !previewFiles.html && !previewFiles.css && !previewFiles.js;
 
+  // Check if HTML content is a fragment (no <html> or <!DOCTYPE>) but contains
+  // visible HTML elements — we should still render it
+  const isHtmlFragment = useMemo(() => {
+    if (!previewFiles.html) return false;
+    const html = previewFiles.html.trim();
+    // If it's a full document, it's not a fragment
+    if (/<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html)) return false;
+    // If it contains HTML tags, it's a fragment
+    if (/<[a-zA-Z][^>]*>/.test(html)) return true;
+    return false;
+  }, [previewFiles.html]);
+
+  const hasContent = !isEmpty || isHtmlFragment;
+
   // Build srcdoc with console capture injected
   const buildSrcdoc = useCallback((html: string, css: string, js: string) => {
+    // ── Always strip external CSS/JS file references from HTML ──
+    // When AI generates multi-file projects (index.html + styles.css + script.js),
+    // the HTML often contains <link href="styles.css"> and <script src="script.js">
+    // Since we inline CSS/JS into the srcdoc, these references would cause 404s.
+    let cleanedHtml = html;
+
+    // Remove <link> tags referencing local CSS files (styles.css, style.css, etc.)
+    cleanedHtml = cleanedHtml.replace(
+      /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
+      (match, href: string) => {
+        // Only strip local/relative CSS references (not CDN URLs)
+        if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
+          return match; // Keep CDN references
+        }
+        return ''; // Strip local file references
+      }
+    );
+
+    // Remove <script src="..."> tags referencing local JS files
+    cleanedHtml = cleanedHtml.replace(
+      /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
+      (match, src: string) => {
+        // Only strip local/relative JS references (not CDN URLs)
+        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+          return match; // Keep CDN references
+        }
+        return ''; // Strip local file references
+      }
+    );
+
+    // Also remove self-closing <script src="..."/> variants
+    cleanedHtml = cleanedHtml.replace(
+      /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*\/>/gi,
+      (match, src: string) => {
+        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+          return match;
+        }
+        return '';
+      }
+    );
+
+    // Clean up empty lines left by removed tags
+    cleanedHtml = cleanedHtml.replace(/\n\s*\n\s*\n/g, '\n\n');
+
+    // ── If HTML is a self-contained document with no separate CSS/JS, use as-is (with refs already stripped) ──
+    if (cleanedHtml && !css && !js && (/<html[\s>]/i.test(cleanedHtml) || /<!DOCTYPE/i.test(cleanedHtml))) {
+      let doc = cleanedHtml;
+      // Inject console capture and meta tags
+      if (/<head[\s>]/i.test(doc)) {
+        doc = doc.replace(
+          /(<head[^>]*>)/i,
+          `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
+        );
+      } else {
+        // No <head>, add one
+        doc = doc.replace(
+          /(<html[^>]*>)/i,
+          `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
+        );
+      }
+      return doc;
+    }
+
+    // ── Detect if HTML is a full document or just a fragment ──
+    const isFullDocument =
+      /<!DOCTYPE\s+html/i.test(cleanedHtml) ||
+      /<html[\s>]/i.test(cleanedHtml);
+
+    if (isFullDocument) {
+      // ── Full HTML document: inject CSS/JS into the existing structure ──
+      let doc = cleanedHtml;
+
+      // Inject console capture script right after <head> or at start
+      if (/<head[\s>]/i.test(doc)) {
+        doc = doc.replace(
+          /(<head[^>]*>)/i,
+          `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
+        );
+      } else {
+        // No <head>, add one
+        doc = doc.replace(
+          /(<html[^>]*>)/i,
+          `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
+        );
+      }
+
+      // Inject inline CSS right before </head> (or after <head> content)
+      if (css) {
+        const styleBlock = `\n<style>\n${css}\n</style>`;
+        if (/<\/head>/i.test(doc)) {
+          doc = doc.replace(/<\/head>/i, `${styleBlock}\n</head>`);
+        } else if (/<head[^>]*>/i.test(doc)) {
+          doc = doc.replace(/(<head[^>]*>)/i, `$1${styleBlock}`);
+        }
+      }
+
+      // Inject inline JS right before </body>
+      if (js) {
+        const scriptBlock = `\n<script>\ntry {\n${js}\n} catch(e) {\n  document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';\n}\n</script>`;
+        if (/<\/body>/i.test(doc)) {
+          doc = doc.replace(/<\/body>/i, `${scriptBlock}\n</body>`);
+        } else {
+          // No </body>, append before </html>
+          doc = doc.replace(/<\/html>/i, `${scriptBlock}\n</html>`);
+        }
+      }
+
+      return doc;
+    }
+
+    // ── HTML fragment: wrap in a complete document ──
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    ${css}
-  </style>
+  ${css ? `<style>\n${css}\n</style>` : ''}
   ${CONSOLE_CAPTURE_SCRIPT}
 </head>
 <body>
-  ${html}
-  <script>
-    try {
-      ${js}
-    } catch(e) {
-      document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';
-    }
-  </script>
+  ${cleanedHtml}
+  ${js ? `<script>\ntry {\n${js}\n} catch(e) {\n  document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';\n}\n</script>` : ''}
 </body>
 </html>`;
   }, []);
@@ -305,7 +422,7 @@ export default function LivePreview() {
     }
 
     debounceRef.current = setTimeout(() => {
-      if (!isEmpty) {
+      if (hasContent) {
         const hash = computePreviewHash(previewFiles.html, previewFiles.css, previewFiles.js);
         if (hash !== lastContentHashRef.current) {
           lastContentHashRef.current = hash;
@@ -314,6 +431,8 @@ export default function LivePreview() {
           setSrcdoc(buildSrcdoc(previewFiles.html, previewFiles.css, previewFiles.js));
           // Fade out transition overlay after a short delay
           setTimeout(() => setIsTransitioning(false), 200);
+          // Safety timeout: if iframe onLoad doesn't fire within 3s, clear loading state
+          setTimeout(() => setIsLoading(false), 3000);
         }
       }
     }, 300);
@@ -323,7 +442,7 @@ export default function LivePreview() {
         clearTimeout(debounceRef.current);
       }
     };
-  }, [previewFiles.html, previewFiles.css, previewFiles.js, buildSrcdoc, isEmpty]);
+  }, [previewFiles.html, previewFiles.css, previewFiles.js, buildSrcdoc, hasContent]);
 
   // Manual refresh
   const handleRefresh = useCallback(() => {
@@ -336,6 +455,101 @@ export default function LivePreview() {
     setIframeKey((k) => k + 1);
     setTimeout(() => setIsRefreshing(false), 600);
   }, [previewFiles, buildSrcdoc]);
+
+  // Download preview as HTML or ZIP
+  const handleDownload = useCallback(async () => {
+    if (!previewFiles.html && !previewFiles.css && !previewFiles.js) return;
+
+    try {
+      // Build a clean version without the console capture script
+      let cleanHtml = previewFiles.html || '';
+      const css = previewFiles.css || '';
+      const js = previewFiles.js || '';
+
+      // Check if we have multiple files
+      const hasMultipleFiles = (css && cleanHtml) || (js && cleanHtml);
+
+      if (hasMultipleFiles) {
+        // Download as ZIP with separate files
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+
+        // Modify HTML to reference external files
+        let modifiedHtml = cleanHtml;
+        if (css) {
+          // Remove existing local <link> tags
+          modifiedHtml = modifiedHtml.replace(
+            /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
+            (match: string, href: string) => {
+              if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) return match;
+              return '';
+            }
+          );
+          // Add link to external CSS
+          if (/<head[\s>]/i.test(modifiedHtml)) {
+            modifiedHtml = modifiedHtml.replace(/(<head[^>]*>)/i, '$1\n  <link rel="stylesheet" href="styles.css">');
+          }
+          zip.file('styles.css', css);
+        }
+        if (js) {
+          // Remove existing local <script> tags
+          modifiedHtml = modifiedHtml.replace(
+            /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
+            (match: string, src: string) => {
+              if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) return match;
+              return '';
+            }
+          );
+          // Add script reference
+          if (/<\/body>/i.test(modifiedHtml)) {
+            modifiedHtml = modifiedHtml.replace(/<\/body>/i, '  <script src="script.js"></script>\n</body>');
+          }
+          zip.file('script.js', js);
+        }
+
+        // Remove console capture script from downloaded version
+        modifiedHtml = modifiedHtml.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
+
+        // If HTML is a fragment, wrap it
+        if (!/<html[\s>]/i.test(modifiedHtml) && !/<!DOCTYPE/i.test(modifiedHtml)) {
+          modifiedHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${css ? '  <link rel="stylesheet" href="styles.css">' : ''}\n</head>\n<body>\n${modifiedHtml}\n  ${js ? '<script src="script.js"></script>' : ''}\n</body>\n</html>`;
+        }
+
+        zip.file('index.html', modifiedHtml);
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'codeforge-project.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Download started!', { description: 'codeforge-project.zip' });
+      } else {
+        // Download as single HTML file
+        const srcdocContent = buildSrcdoc(cleanHtml, css, js);
+        // Remove console capture script for download
+        const cleanSrcdoc = srcdocContent.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
+
+        const blob = new Blob([cleanSrcdoc], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const title = previewTitle || 'codeforge-preview';
+        a.download = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Download started!', { description: `${title.replace(/\s+/g, '-').toLowerCase()}.html` });
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error('Download failed', { description: 'Please try again.' });
+    }
+  }, [previewFiles, buildSrcdoc, previewTitle]);
 
   // Pop out — open preview in a new browser tab using a blob URL
   const handlePopOut = useCallback(() => {
@@ -387,7 +601,7 @@ export default function LivePreview() {
         <div className="flex items-center gap-2 min-w-0">
           <Monitor className="size-3.5 text-emerald-400 shrink-0" />
           <span className="text-xs font-medium text-zinc-300 shrink-0">Preview</span>
-          {!isEmpty && (
+          {hasContent && (
             <span className="flex items-center gap-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400 animate-pulse">
               <span className="size-1.5 rounded-full bg-emerald-400" />
               LIVE
@@ -396,7 +610,7 @@ export default function LivePreview() {
           <div className="flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-800/60 px-2 py-0.5 min-w-0 max-w-[200px]">
             <Globe className="size-3 text-zinc-500 shrink-0" />
             <span className="truncate text-[11px] text-zinc-500">
-              {isEmpty
+              {!hasContent
                 ? 'preview://about:blank'
                 : previewTitle
                   ? `preview://${previewTitle.replace(/\s+/g, '-').toLowerCase()}.html`
@@ -435,6 +649,24 @@ export default function LivePreview() {
           </div>
 
           <div className="mx-1 h-4 w-px bg-zinc-800" />
+
+          {/* Download button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-zinc-400 hover:text-white"
+                onClick={handleDownload}
+                disabled={!hasContent}
+              >
+                <Download className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Download project
+            </TooltipContent>
+          </Tooltip>
 
           {/* Pop-out button */}
           <Tooltip>
@@ -494,9 +726,9 @@ export default function LivePreview() {
 
       {/* Preview content area */}
       <div className="flex-1 min-h-0 overflow-hidden bg-zinc-900/30 flex flex-col">
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <AnimatePresence mode="wait">
-            {isEmpty ? (
+            {!hasContent ? (
               <motion.div
                 key="empty"
                 className="flex h-full items-center justify-center"
@@ -554,18 +786,17 @@ export default function LivePreview() {
             ) : (
               <motion.div
                 key="preview"
-                className="flex h-full justify-center p-2"
+                className="flex h-full justify-center items-stretch p-1.5"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.25, ease: 'easeOut' }}
               >
                 <div
-                  className="relative h-full rounded-lg border border-zinc-700/50 bg-white shadow-lg overflow-hidden"
+                  className="relative h-full w-full rounded-lg border border-zinc-700/50 bg-white shadow-lg overflow-hidden"
                   style={{
-                    width: deviceConfig.width,
-                    maxWidth: deviceConfig.maxWidth,
-                    transition: 'width 0.35s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                    maxWidth: deviceSize === 'desktop' ? '100%' : deviceConfig.maxWidth,
+                    transition: 'max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 >
                   {/* Loading indicator overlay */}
@@ -599,7 +830,7 @@ export default function LivePreview() {
                         ref={iframeRef}
                         key={iframeKey}
                         srcDoc={srcdoc}
-                        sandbox="allow-scripts allow-modals allow-same-origin"
+                        sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
                         title="Live Preview"
                         className="h-full w-full border-0"
                         onLoad={handleIframeLoad}
@@ -613,7 +844,7 @@ export default function LivePreview() {
         </div>
 
         {/* Console Panel */}
-        {!isEmpty && (
+        {hasContent && (
           <Collapsible
             open={isConsoleOpen}
             onOpenChange={setIsConsoleOpen}
