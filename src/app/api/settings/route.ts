@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { testProviderConnection, getApiKeyForProvider, type ProviderKey } from '@/lib/llm';
+import { testProviderConnection, getApiKeyForProvider, invalidateSettingsCache, type ProviderKey } from '@/lib/llm';
 
 export async function GET() {
   try {
@@ -75,6 +75,8 @@ export async function POST(req: NextRequest) {
       );
 
       await Promise.all(operations);
+      // Invalidate cache so next LLM call picks up new settings
+      invalidateSettingsCache();
     } catch (dbError) {
       // Database unavailable — settings were already saved to localStorage by the client
       console.warn('Settings POST: Database unavailable, settings saved client-side only');

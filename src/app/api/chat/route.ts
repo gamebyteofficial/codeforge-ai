@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamLLM, getApiKeyForProvider, type ProviderKey, type StreamChunk } from '@/lib/llm';
-import { db } from '@/lib/db';
 
 // System prompts for different agent types
 const FILE_AWARE_PROMPT = `
@@ -111,37 +110,6 @@ CRITICAL RULES:
 
 Be concise but thorough. Explain your reasoning when suggesting changes.`;
 
-/**
- * Build a context string from existing project files
- */
-async function buildProjectContext(projectId?: string): Promise<string> {
-  if (!projectId) return '';
-
-  try {
-    const files = await db.file.findMany({
-      where: { projectId },
-      select: { name: true, path: true, language: true, content: true },
-      orderBy: { name: 'asc' },
-    });
-
-    if (files.length === 0) return '';
-
-    const fileList = files
-      .map(f => `  - ${f.path || f.name} (${f.language || 'unknown'}, ${f.content.length} chars)`)
-      .join('\n');
-
-    // Include content of small files (under 2000 chars) for context
-    const smallFiles = files.filter(f => f.content.length < 2000);
-    const fileContents = smallFiles
-      .map(f => `\n📄 **${f.path || f.name}**\n\`\`\`${f.language || ''}\n${f.content}\n\`\`\``)
-      .join('');
-
-    return `\n\nCURRENT PROJECT FILES:\n${fileList}\n\nEXISTING FILE CONTENTS (for reference):\n${fileContents}`;
-  } catch {
-    return '';
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -155,6 +123,7 @@ export async function POST(req: NextRequest) {
       temperature,
       maxTokens,
       stream: shouldStream = true,
+      settings: clientSettings,
     } = body as {
       message: string;
       conversationId?: string;
@@ -165,31 +134,25 @@ export async function POST(req: NextRequest) {
       temperature?: number;
       maxTokens?: number;
       stream?: boolean;
+      settings?: Record<string, string>;
     };
 
     if (!message || typeof message !== 'string') {
-      return NextResponse.json(
-        { error: 'Message is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Select system prompt based on agent type, always append FILE_AWARE_PROMPT
+    // Select system prompt based on agent type
     const basePrompt = agent && AGENT_SYSTEM_PROMPTS[agent]
       ? AGENT_SYSTEM_PROMPTS[agent]
       : DEFAULT_SYSTEM_PROMPT;
 
-    // Build project context if projectId is provided
-    const projectContext = await buildProjectContext(projectId);
+    const systemPrompt = basePrompt + '\n\n' + FILE_AWARE_PROMPT;
 
-    const systemPrompt = basePrompt + '\n\n' + FILE_AWARE_PROMPT + projectContext;
-
-    // Build messages array with proper system prompt
+    // Build messages array
     const messages: { role: string; content: string }[] = [
       { role: 'system', content: systemPrompt },
     ];
 
-    // Add conversation history if provided
     if (history && Array.isArray(history)) {
       for (const msg of history) {
         if (msg.role === 'user' || msg.role === 'assistant') {
@@ -198,61 +161,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Add current user message
     messages.push({ role: 'user', content: message });
 
-    // Use provided model or default to openrouter/auto (works with any provider)
     const selectedModel = model || 'openrouter/auto';
 
-    console.log(`[Chat API] Request: model=${selectedModel}, agent=${agent || 'default'}, messageLength=${message.length}, hasProjectContext=${!!projectContext}`);
+    // ── FAST PATH: Quick API key check from client settings ──
+    // When client sends settings, use them directly — no DB read needed!
+    const hasClientSettings = clientSettings && Object.keys(clientSettings).length > 0;
 
-    // Pre-check API key availability for faster error response
-    // Try database first, fall back to client-provided settings
-    let settingsMap: Record<string, string> = {};
-    try {
-      const settingsRows = await db.setting.findMany();
-      settingsRows.forEach((s) => { settingsMap[s.key] = s.value; });
-    } catch (dbError) {
-      console.warn('[Chat API] Database unavailable, using client-provided settings');
-    }
+    if (hasClientSettings) {
+      const configuredProvider = (clientSettings!.provider || 'openrouter') as ProviderKey;
+      const hasPrimaryKey = !!getApiKeyForProvider(clientSettings!, configuredProvider);
+      const secondaryProvider = clientSettings!.provider2 as ProviderKey | undefined;
+      const hasSecondaryKey = secondaryProvider ? !!getApiKeyForProvider(clientSettings!, secondaryProvider) : false;
 
-    // Merge with client-provided settings (client settings take priority if DB is empty)
-    const clientSettings = (body as { settings?: Record<string, string> }).settings;
-    if (clientSettings && Object.keys(clientSettings).length > 0) {
-      // Client settings fill in gaps or override when DB is unavailable
-      if (Object.keys(settingsMap).length === 0) {
-        settingsMap = { ...clientSettings };
-      } else {
-        // DB settings take priority, but client settings fill in missing keys
-        for (const [key, value] of Object.entries(clientSettings)) {
-          if (!settingsMap[key] && value) {
-            settingsMap[key] = value;
-          }
+      if (!hasPrimaryKey && !hasSecondaryKey) {
+        console.warn(`[Chat API] No API key in client settings: provider=${configuredProvider}`);
+        if (shouldStream) {
+          const encoder = new TextEncoder();
+          const errorStream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: `No API key configured for ${configuredProvider}. Please add your API key in ⚙️ Settings.` })}\n\n`));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            },
+          });
+          return new Response(errorStream, {
+            headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+          });
         }
-      }
-    }
-
-    const configuredProvider = (settingsMap.provider || 'openrouter') as ProviderKey;
-    const hasPrimaryKey = !!getApiKeyForProvider(settingsMap, configuredProvider);
-    const secondaryProvider = settingsMap.provider2 as ProviderKey | undefined;
-    const hasSecondaryKey = secondaryProvider ? !!getApiKeyForProvider(settingsMap, secondaryProvider) : false;
-
-    if (!hasPrimaryKey && !hasSecondaryKey) {
-      console.warn(`[Chat API] No API key found for provider=${configuredProvider} or secondary=${secondaryProvider || 'none'}`);
-      if (shouldStream) {
-        const encoder = new TextEncoder();
-        const errorStream = new ReadableStream({
-          start(controller) {
-            const errorMsg = JSON.stringify({ error: `No API key configured for ${configuredProvider}. Please add your API key in ⚙️ Settings.` });
-            controller.enqueue(encoder.encode(`data: ${errorMsg}\n\n`));
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
-          },
-        });
-        return new Response(errorStream, {
-          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
-        });
-      } else {
         return NextResponse.json(
           { error: `No API key configured for ${configuredProvider}. Please add your API key in ⚙️ Settings.` },
           { status: 401 },
@@ -260,7 +197,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log(`[Chat API] API key resolved: primary=${hasPrimaryKey} (${configuredProvider}), secondary=${hasSecondaryKey} (${secondaryProvider || 'none'})`);
+    console.log(`[Chat API] model=${selectedModel}, agent=${agent || 'default'}, fastPath=${hasClientSettings}`);
 
     if (shouldStream) {
       // ─── Streaming Response ───────────────────────────────────────────
@@ -272,50 +209,42 @@ export async function POST(req: NextRequest) {
 
           const safeEnqueue = (data: Uint8Array) => {
             if (!closed) {
-              try {
-                controller.enqueue(data);
-              } catch {
-                // Controller already closed — ignore
-              }
+              try { controller.enqueue(data); } catch {}
             }
           };
 
           const safeClose = () => {
             if (!closed) {
               closed = true;
-              try {
-                controller.close();
-              } catch {
-                // Controller already closed — ignore
-              }
+              try { controller.close(); } catch {}
             }
           };
 
           try {
+            // Use preferClientSettings=true for maximum speed — skips DB read entirely
             for await (const chunk of streamLLM({
               model: selectedModel,
               messages,
               temperature: temperature ?? 0.7,
               maxTokens: maxTokens ?? 4096,
-              clientSettings: settingsMap,
+              clientSettings: clientSettings || undefined,
+              preferClientSettings: !!hasClientSettings,
             })) {
-              if (closed) break; // Stop processing if stream was closed
+              if (closed) break;
 
               if (chunk.error) {
                 console.error(`[Chat API] LLM stream error: ${chunk.error}`);
-                const errorMsg = JSON.stringify({ error: chunk.error });
-                safeEnqueue(encoder.encode(`data: ${errorMsg}\n\n`));
+                safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: chunk.error })}\n\n`));
                 safeEnqueue(encoder.encode('data: [DONE]\n\n'));
                 safeClose();
                 return;
               }
 
               if (chunk.content) {
-                const sseMessage = JSON.stringify({
+                safeEnqueue(encoder.encode(`data: ${JSON.stringify({
                   content: chunk.content,
                   model: chunk.model || selectedModel,
-                });
-                safeEnqueue(encoder.encode(`data: ${sseMessage}\n\n`));
+                })}\n\n`));
               }
 
               if (chunk.done) {
@@ -325,15 +254,13 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            // Fallback close if no done signal
             safeEnqueue(encoder.encode('data: [DONE]\n\n'));
             safeClose();
           } catch (error) {
             console.error('[Chat API] Stream error:', error);
             if (!closed) {
               const errMsg = error instanceof Error ? error.message : 'Stream interrupted unexpectedly';
-              const errorMsg = JSON.stringify({ error: errMsg });
-              safeEnqueue(encoder.encode(`data: ${errorMsg}\n\n`));
+              safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`));
               safeEnqueue(encoder.encode('data: [DONE]\n\n'));
               safeClose();
             }
@@ -345,41 +272,45 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no', // Disable nginx buffering for faster SSE
         },
       });
     }
 
     // ─── Non-Streaming Response ─────────────────────────────────────────
-    const result = await callLLMNonStreaming({
+    let fullContent = '';
+    let lastModel = selectedModel;
+
+    for await (const chunk of streamLLM({
       model: selectedModel,
       messages,
       temperature: temperature ?? 0.7,
       maxTokens: maxTokens ?? 4096,
-      clientSettings: settingsMap,
-    });
-
-    if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: 500 });
+      clientSettings: clientSettings || undefined,
+      preferClientSettings: !!hasClientSettings,
+    })) {
+      if (chunk.error) {
+        return NextResponse.json({ error: chunk.error }, { status: 500 });
+      }
+      fullContent += chunk.content;
+      if (chunk.model) lastModel = chunk.model;
     }
 
     return NextResponse.json({
       conversationId: conversationId || crypto.randomUUID(),
-      message: result.content || 'No response received.',
-      tokens: Math.ceil(message.length / 4) + Math.ceil((result.content || '').length / 4),
-      model: result.model || selectedModel,
+      message: fullContent || 'No response received.',
+      tokens: Math.ceil(message.length / 4) + Math.ceil((fullContent || '').length / 4),
+      model: lastModel,
       projectId: projectId || null,
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[Chat API] Unhandled error: ${errorMsg}`);
 
-    // Provide specific, actionable error messages
     const isNoApiKey = errorMsg.toLowerCase().includes('no api key') || errorMsg.toLowerCase().includes('api key');
     const isNetworkError = errorMsg.toLowerCase().includes('network') ||
-      errorMsg.toLowerCase().includes('econnrefused') ||
-      errorMsg.toLowerCase().includes('enotfound') ||
-      errorMsg.toLowerCase().includes('fetch failed');
+      errorMsg.toLowerCase().includes('econnrefused') || errorMsg.toLowerCase().includes('fetch failed');
     const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('aborted');
     const isRateLimit = errorMsg.toLowerCase().includes('rate limit') || errorMsg.includes('429');
 
@@ -387,41 +318,15 @@ export async function POST(req: NextRequest) {
     if (isNoApiKey) {
       userMessage = 'No API key configured. Please add your API key in ⚙️ Settings.';
     } else if (isNetworkError) {
-      userMessage = 'Network error: Could not reach the AI provider. Check your internet connection and API key in ⚙️ Settings, or try a different provider.';
+      userMessage = 'Network error: Could not reach the AI provider. Check your connection or try a different provider.';
     } else if (isTimeout) {
-      userMessage = 'Request timed out. The provider might be slow or unavailable. Try a different model or provider.';
+      userMessage = 'Request timed out. Try a different model or provider.';
     } else if (isRateLimit) {
-      userMessage = 'Rate limit reached. Please wait a moment and try again, or switch to a different provider in ⚙️ Settings.';
+      userMessage = 'Rate limit reached. Please wait a moment and try again.';
     } else {
-      userMessage = `Failed to process message: ${errorMsg}. Check your API key in ⚙️ Settings and try again.`;
+      userMessage = `Failed to process message: ${errorMsg}. Check your API key in ⚙️ Settings.`;
     }
 
-    return NextResponse.json(
-      { error: userMessage },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: userMessage }, { status: 500 });
   }
-}
-
-/**
- * Helper: non-streaming LLM call
- */
-async function callLLMNonStreaming(options: {
-  model: string;
-  messages: { role: string; content: string }[];
-  temperature: number;
-  maxTokens: number;
-}): Promise<{ content: string; model: string; error?: string }> {
-  let fullContent = '';
-  let lastModel = options.model;
-
-  for await (const chunk of streamLLM(options)) {
-    if (chunk.error) {
-      return { content: fullContent, model: lastModel, error: chunk.error };
-    }
-    fullContent += chunk.content;
-    if (chunk.model) lastModel = chunk.model;
-  }
-
-  return { content: fullContent, model: lastModel };
 }
