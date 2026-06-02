@@ -587,3 +587,67 @@ Stage Summary:
 - Modified: src/components/codeforge/ChatPanel.tsx (rAF batching for streaming)
 - Key improvement: ~40% reduction in React re-renders during streaming
 - Key improvement: Eliminated hundreds of unnecessary Prisma DB queries per hour
+
+---
+Task ID: 2
+Agent: Turso DB Migration Agent
+Task: Replace PrismaLibSql adapter with direct libsql client for Turso cloud database
+
+Work Log:
+- **Root cause**: `@prisma/adapter-libsql` doesn't work with Prisma 6.19.2 — throws "URL_INVALID: The URL 'undefined' is not in a valid format" even when DATABASE_URL is properly set
+- **Solution**: Keep Prisma for local SQLite development, but use the `@libsql/client` directly (without Prisma) when connecting to Turso
+
+### Major Changes
+
+**1. Rewrote `src/lib/db.ts`** — Complete dual-mode database implementation:
+- Defined `DbClient` TypeScript interface with all methods used by API routes
+- Created `PrismaDb` class that wraps PrismaClient for local SQLite (unchanged behavior)
+- Created `LibsqlDb` class that implements `DbClient` using raw SQL queries via libsql client
+- Implemented all CRUD operations for 7 models: Project, Conversation, Message, File, Task, Memory, Setting
+- Added `buildWhere()` and `buildOrderBy()` SQL helper functions (parameterized queries to prevent SQL injection)
+- Added `rowToObject()` helper to convert libsql rows to plain objects
+- Added `convertBooleans()` helper for SQLite boolean fields (File.isFolder: 0/1 → false/true)
+- Implemented `_count` includes for `project.findMany` using separate COUNT queries
+- Implemented relation includes for `project.findUnique` (files, tasks, conversations, memories) and `conversation.findUnique` (messages)
+- Implemented `setting.upsert` using `ON CONFLICT (key) DO UPDATE SET value = ?` (unique index on key exists)
+- Implemented `task.createMany` and `memory.createMany` by iterating individual creates
+- Implemented nested creates for `project.create` (files: { create: [...] })
+- Implemented `findFirst` for Project and File models
+- Used `crypto.randomUUID()` instead of Prisma's cuid for new record IDs
+- All `updatedAt` fields set to `new Date().toISOString()` on updates
+- `$disconnect()` calls `client.close()` for libsql
+
+**2. Database client initialization**:
+- When `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are both set → uses LibsqlDb (Turso cloud)
+- Otherwise → uses PrismaDb with local SQLite (DATABASE_URL or file:./dev.db)
+- Hot-reload handling: Reuses existing libsql connection but recreates the LibsqlDb wrapper so code changes are picked up
+- Avoids the "Client is closed" error that occurred when disconnecting old clients during hot-reload
+
+**3. No changes needed to API routes**:
+- The `DbClient` interface matches the Prisma method signatures used by all routes
+- All 12 files that import from `@/lib/db` continue to work without modification
+- Verified: projects, settings, tasks, memory, files, chat, models, seed routes all function correctly
+
+### Bug Fixes During Implementation
+- Fixed task/memory `create()` methods: They were receiving the full `args` object (`{ data: {...} }`) instead of just `args.data`, causing "table has no column named data" SQL errors
+- Fixed hot-reload issue: Old `db` object was being reused even after code changes because `globalForDb.db` was set. Changed to recreate the wrapper while reusing the underlying libsql connection
+- Fixed boolean conversion: SQLite stores booleans as 0/1 integers but JavaScript expects true/false. Added `convertBooleans()` for File.isFolder field
+
+### Testing Results
+- All API endpoints return correct data from Turso cloud database:
+  - `GET /api/settings` → returns saved settings
+  - `GET /api/projects` → returns projects with `_count` includes
+  - `GET /api/projects/[id]` → returns project with files, tasks, conversations, memories
+  - `POST /api/tasks` → creates tasks with UUID IDs
+  - `POST /api/files` → creates files with boolean `isFolder` properly converted
+  - `POST /api/memory` → creates memory entries
+  - `GET /api/models` → reads settings from Turso for provider resolution
+- Lint check passes with zero errors in `src/` directory
+
+Stage Summary:
+- Replaced broken `@prisma/adapter-libsql` with direct `@libsql/client` usage for Turso
+- Local SQLite development still uses Prisma (unchanged)
+- Turso cloud database works perfectly via raw SQL with parameterized queries
+- All API routes work without modification thanks to the `DbClient` interface
+- Boolean fields properly converted between SQLite integers and JavaScript booleans
+- Hot-reload works correctly: connection reused, wrapper recreated
