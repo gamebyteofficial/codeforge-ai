@@ -477,3 +477,33 @@ Stage Summary:
 - Auto-deploy enabled: every git push triggers a new deployment
 - All API routes and pages deployed and functional
 - SQLite database is working (file-based) — for production, recommend adding Vercel Postgres
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix "can't select to start coding" bug on deployed Vercel app
+
+Work Log:
+- Investigated root cause: SQLite database doesn't work on Vercel's serverless environment
+- When `/api/settings` POST failed on Vercel, the "Start Coding" button showed an error toast and didn't proceed
+- Created `/src/lib/localSettings.ts` - localStorage-based settings utility that works everywhere
+- Updated `OnboardingWizard.tsx` - `handleComplete` now saves to localStorage first, always proceeds regardless of API success
+- Updated `OnboardingWizard.tsx` - `handleSkipOnboarding` also uses localStorage
+- Updated `page.tsx` - `checkOnboarding` now checks localStorage first before falling back to API
+- Updated `SettingsModal.tsx` - `loadSettings` checks localStorage first, `handleSave` uses localStorage + best-effort API
+- Updated `/api/settings/route.ts` - GET returns empty on DB failure, POST returns success even on DB failure
+- Updated `/api/chat/route.ts` - Accepts client-provided settings, uses them as fallback when DB is unavailable
+- Updated `/api/models/route.ts` - Accepts provider from query params, handles DB failure gracefully
+- Updated `/api/projects/route.ts` - Returns empty projects/fake project on DB failure
+- Updated `/lib/llm.ts` - `getUserSettings` handles DB failure, `streamLLM` accepts client settings
+- Updated `ChatPanel.tsx` - Now sends settings to `/api/chat` endpoint
+- Pushed all changes to GitHub (commit: 6ec8c42)
+- Previous Vercel token is expired - user needs to provide new one for redeploy
+
+Stage Summary:
+- Root cause: SQLite doesn't persist on Vercel serverless functions
+- Fix: localStorage is now the primary settings store, API is best-effort backup
+- The "Start Coding" button now always proceeds regardless of API success/failure
+- Code pushed to GitHub: gamebyteofficial/codeforge-ai
+- Vercel auto-deploy should trigger if the project is connected to GitHub
+- Vercel token expired - need new token to manually deploy
