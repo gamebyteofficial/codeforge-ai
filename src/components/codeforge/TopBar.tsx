@@ -9,6 +9,7 @@ import {
   Plus,
   FolderOpen,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 
 import { useAppStore, type Project } from '@/store';
@@ -29,6 +30,16 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -44,6 +55,7 @@ export default function TopBar() {
   const projects = useProjectState(s => s.projects);
   const setCurrentProject = useProjectState(s => s.setCurrentProject);
   const setProjects = useProjectState(s => s.setProjects);
+  const removeProject = useProjectState(s => s.removeProject);
   const areProjectsLoaded = useStore(s => s.areProjectsLoaded);
   const setAreProjectsLoaded = useStore(s => s.setAreProjectsLoaded);
   const setIsSettingsOpen = useUIState(s => s.setIsSettingsOpen);
@@ -56,6 +68,11 @@ export default function TopBar() {
   const [newProjectLanguage, setNewProjectLanguage] = useState('typescript');
   const [newProjectFramework, setNewProjectFramework] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
+  // Delete project state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch projects only if not already loaded by page.tsx
   useEffect(() => {
@@ -110,6 +127,38 @@ export default function TopBar() {
     }
   }, [newProjectName, newProjectLanguage, newProjectFramework, projects, setProjects, setCurrentProject]);
 
+  const handleDeleteProject = useCallback(async () => {
+    if (!projectToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${projectToDelete.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        removeProject(projectToDelete.id);
+        // If we deleted the current project, switch to the first available one
+        const remaining = projects.filter(p => p.id !== projectToDelete.id);
+        if (currentProject?.id === projectToDelete.id) {
+          setCurrentProject(remaining.length > 0 ? remaining[0] : null);
+        }
+        setDeleteDialogOpen(false);
+        setProjectToDelete(null);
+      } else {
+        console.error('Failed to delete project');
+      }
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [projectToDelete, currentProject, projects, removeProject, setCurrentProject]);
+
+  const openDeleteDialog = useCallback((e: React.MouseEvent, project: Project) => {
+    e.stopPropagation();
+    setProjectToDelete(project);
+    setDeleteDialogOpen(true);
+  }, []);
+
   const runningTasks = useMemo(() => tasks.filter(t => t.status === 'running'), [tasks]);
 
   return (
@@ -147,30 +196,38 @@ export default function TopBar() {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
-              className="w-56 border-zinc-700 bg-zinc-800 text-zinc-200"
+              className="w-64 border-zinc-700 bg-zinc-800 text-zinc-200"
             >
               {projects.length > 0 ? (
                 projects.map((project) => (
-                  <DropdownMenuItem
+                  <div
                     key={project.id}
-                    onClick={() => setCurrentProject(project)}
-                    className={`text-xs ${
+                    className={`group flex items-center gap-2 rounded-sm px-2 py-1.5 text-xs cursor-pointer ${
                       currentProject?.id === project.id
                         ? 'bg-emerald-500/10 text-emerald-400'
-                        : 'focus:bg-zinc-700 focus:text-zinc-100'
+                        : 'text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
                     }`}
+                    onClick={() => setCurrentProject(project)}
                   >
-                    <FolderOpen className="mr-2 size-3.5" />
-                    {project.name}
-                    <span className="ml-auto text-[10px] text-zinc-500">
+                    <FolderOpen className="size-3.5 shrink-0" />
+                    <span className="truncate flex-1">{project.name}</span>
+                    <span className="text-[10px] text-zinc-500">
                       {project.language}
                     </span>
-                  </DropdownMenuItem>
+                    <button
+                      type="button"
+                      className="size-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      onClick={(e) => openDeleteDialog(e, project)}
+                      aria-label={`Delete ${project.name}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
                 ))
               ) : (
-                <DropdownMenuItem disabled className="text-xs text-zinc-500">
+                <div className="px-2 py-1.5 text-xs text-zinc-500">
                   No projects yet
-                </DropdownMenuItem>
+                </div>
               )}
               <DropdownMenuSeparator className="bg-zinc-700" />
               <DropdownMenuItem
@@ -307,6 +364,31 @@ export default function TopBar() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Project Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent className="border-zinc-700 bg-zinc-900 text-zinc-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-zinc-100">Delete Project</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400">
+              Are you sure you want to delete <span className="font-semibold text-zinc-200">&quot;{projectToDelete?.name}&quot;</span>?
+              This will permanently delete all files, conversations, tasks, and memories associated with this project. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteProject}
+              disabled={isDeleting}
+              className="bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Project'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
