@@ -33,7 +33,7 @@ import {
 const WELCOME_LINES: Omit<TerminalLine, 'id'>[] = [
   {
     type: 'system',
-    content: 'CodeForge AI Terminal v1.0',
+    content: 'Waziros AI Terminal v1.0',
     timestamp: new Date().toISOString(),
   },
   {

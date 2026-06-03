@@ -95,8 +95,8 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {
-      'HTTP-Referer': 'https://codeforge-ai.app',
-      'X-Title': 'CodeForge AI',
+      'HTTP-Referer': 'https://waziros-ai.app',
+      'X-Title': 'Waziros AI',
     },
   },
   opencode: {
@@ -112,8 +112,8 @@ const PROVIDER_CONFIGS: Record<ProviderKey, ProviderConfig> = {
     chatPath: '/chat/completions',
     openaiCompatible: true,
     extraHeaders: {
-      'HTTP-Referer': 'https://codeforge-ai.app',
-      'X-Title': 'CodeForge AI',
+      'HTTP-Referer': 'https://waziros-ai.app',
+      'X-Title': 'Waziros AI',
     },
   },
   groq: {

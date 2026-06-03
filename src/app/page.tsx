@@ -257,7 +257,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: 'My Project',
-            description: 'Default project for CodeForge AI',
+            description: 'Default project for Waziros AI',
             language: 'typescript',
           }),
         });
@@ -410,7 +410,7 @@ export default function Home() {
                           </Tooltip>
                           <div className="h-4 w-px bg-zinc-800" />
                           <span className="text-[11px] text-zinc-600">
-                            CodeForge AI
+                            Waziros AI
                           </span>
                         </div>
                       )}
@@ -499,7 +499,7 @@ export default function Home() {
 
           {/* Project info */}
           <span className="text-[10px] text-zinc-600">
-            CodeForge AI v2.0
+            Waziros AI v2.0
           </span>
 
           {/* Model info */}
@@ -555,7 +555,7 @@ export default function Home() {
             <TooltipTrigger asChild>
               <button
                 onClick={() => {
-                  const textarea = document.querySelector('textarea[placeholder="Ask CodeForge AI..."]') as HTMLTextAreaElement;
+                  const textarea = document.querySelector('textarea[placeholder="Ask Waziros AI..."]') as HTMLTextAreaElement;
                   textarea?.focus();
                 }}
                 className="flex items-center gap-1 text-[10px] text-zinc-600 transition-colors hover:text-emerald-400"
@@ -568,7 +568,7 @@ export default function Home() {
           </Tooltip>
 
           <span className="text-[10px] text-zinc-600">
-            CodeForge AI
+            Waziros AI
           </span>
         </div>
       </footer>

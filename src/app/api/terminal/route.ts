@@ -66,7 +66,7 @@ function simulateCommand(command: string): string {
     case 'date':
       return new Date().toString() + '\n';
     case 'whoami':
-      return 'codeforge-ai\n';
+      return 'waziros-ai\n';
     case 'node':
       if (parts[1] === '--version' || parts[1] === '-v') return 'v20.11.0\n';
       return 'Node.js runtime active\n';
@@ -78,7 +78,7 @@ function simulateCommand(command: string): string {
       return `✓ ${baseCmd} command executed\n`;
     case 'git':
       if (parts[1] === 'status') return 'On branch main\nnothing to commit, working tree clean\n';
-      if (parts[1] === 'log') return 'commit abc1234 (HEAD -> main)\nAuthor: CodeForge AI\nDate: Today\n\n    Initial commit\n';
+      if (parts[1] === 'log') return 'commit abc1234 (HEAD -> main)\nAuthor: Waziros AI\nDate: Today\n\n    Initial commit\n';
       if (parts[1] === 'init') return 'Initialized empty Git repository\n';
       return `✓ git ${parts[1] || ''} executed\n`;
     case 'python':
@@ -94,7 +94,7 @@ function simulateCommand(command: string): string {
     case 'clear':
       return '';
     case 'help':
-      return `CodeForge AI Terminal v1.0
+      return `Waziros AI Terminal v1.0
 Available commands:
   ls          - List directory contents
   pwd         - Print working directory

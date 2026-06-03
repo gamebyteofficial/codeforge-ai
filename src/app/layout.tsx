@@ -16,16 +16,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CodeForge AI - Autonomous Coding Agent",
+  title: "Waziros AI - Autonomous Coding Agent",
   description: "Professional AI Coding Agent capable of building applications and games from natural language instructions.",
-  keywords: ["CodeForge AI", "AI Coding Agent", "Autonomous Coding", "Next.js", "TypeScript", "AI Development"],
-  authors: [{ name: "CodeForge AI Team" }],
+  keywords: ["Waziros AI", "AI Coding Agent", "Autonomous Coding", "Next.js", "TypeScript", "AI Development"],
+  authors: [{ name: "Waziros AI Team" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   manifest: "/manifest.json",
   openGraph: {
-    title: "CodeForge AI - Autonomous Coding Agent",
+    title: "Waziros AI - Autonomous Coding Agent",
     description: "Build applications and games from natural language instructions",
     type: "website",
   },

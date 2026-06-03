@@ -13,7 +13,7 @@ export async function POST() {
     const project = await db.project.create({
       data: {
         name: 'Demo Project',
-        description: 'A sample project to demonstrate CodeForge AI capabilities',
+        description: 'A sample project to demonstrate Waziros AI capabilities',
         language: 'typescript',
         framework: 'nextjs',
         files: {
@@ -46,7 +46,7 @@ export async function POST() {
 export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <h1 className="text-4xl font-bold">Hello, CodeForge AI!</h1>
+      <h1 className="text-4xl font-bold">Hello, Waziros AI!</h1>
     </div>
   );
 }`,
@@ -212,13 +212,13 @@ body {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeForge AI - Live Preview</title>
+  <title>Waziros AI - Live Preview</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
     <header class="hero">
-      <div class="hero-badge">✨ CodeForge AI</div>
+      <div class="hero-badge">✨ Waziros AI</div>
       <h1>Build Anything with AI</h1>
       <p>Your intelligent coding companion that understands, plans, and creates.</p>
       <div class="hero-buttons">
@@ -479,15 +479,15 @@ function decrement() {
 }
 
 function handleGetStarted() {
-  alert('Welcome to CodeForge AI! Start chatting with the AI to generate code.');
+  alert('Welcome to Waziros AI! Start chatting with the AI to generate code.');
 }
 
 function handleLearnMore() {
-  alert('CodeForge AI is an intelligent coding companion that helps you build, debug, and review code.');
+  alert('Waziros AI is an intelligent coding companion that helps you build, debug, and review code.');
 }
 
 // Initialize
-console.log('CodeForge AI - Live Preview loaded!');`,
+console.log('Waziros AI - Live Preview loaded!');`,
               language: 'javascript',
             },
             {

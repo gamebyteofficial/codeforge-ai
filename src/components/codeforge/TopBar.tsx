@@ -116,7 +116,7 @@ export default function TopBar() {
               <Zap className="size-4 text-white" />
             </div>
             <span className="text-sm font-bold text-zinc-100 tracking-tight">
-              CodeForge <span className="text-emerald-400">AI</span>
+              Waziros <span className="text-emerald-400">AI</span>
             </span>
           </div>
 

@@ -9,7 +9,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'CodeForge AI',
+    title: 'Waziros AI',
     icon: path.join(__dirname, '../public/icon.png'),
     webPreferences: {
       nodeIntegration: false,

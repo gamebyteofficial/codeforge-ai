@@ -596,7 +596,7 @@ export default function OnboardingWizard() {
         {/* Bottom brand */}
         <div className="mt-6 text-center">
           <p className="text-xs text-zinc-600">
-            CodeForge AI
+            Waziros AI
           </p>
         </div>
       </motion.div>
@@ -625,7 +625,7 @@ function Step1Welcome() {
         transition={{ delay: 0.2 }}
         className="mb-2 text-2xl font-bold text-zinc-100"
       >
-        Welcome to <span className="text-emerald-400">CodeForge AI</span>
+        Welcome to <span className="text-emerald-400">Waziros AI</span>
       </motion.h1>
 
       <motion.p

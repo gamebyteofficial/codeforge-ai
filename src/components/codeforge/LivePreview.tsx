@@ -521,12 +521,12 @@ export default function LivePreview() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'codeforge-project.zip';
+        a.download = 'waziros-project.zip';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        toast.success('Download started!', { description: 'codeforge-project.zip' });
+        toast.success('Download started!', { description: 'waziros-project.zip' });
       } else {
         // Download as single HTML file
         const srcdocContent = buildSrcdoc(cleanHtml, css, js);
@@ -537,7 +537,7 @@ export default function LivePreview() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const title = previewTitle || 'codeforge-preview';
+        const title = previewTitle || 'waziros-preview';
         a.download = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
         document.body.appendChild(a);
         a.click();

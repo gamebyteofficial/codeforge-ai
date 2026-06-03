@@ -106,8 +106,8 @@
     "wait-on": "^9.0.10"
   },
   "build": {
-    "appId": "com.codeforge.ai",
-    "productName": "CodeForge AI",
+    "appId": "com.waziros.ai",
+    "productName": "Waziros AI",
     "directories": {
       "output": "dist-electron"
     },

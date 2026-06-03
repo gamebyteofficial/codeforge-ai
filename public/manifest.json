@@ -1,6 +1,6 @@
 {
-  "name": "CodeForge AI",
-  "short_name": "CodeForge",
+  "name": "Waziros AI",
+  "short_name": "Waziros",
   "description": "Autonomous AI Coding Agent - Build apps from natural language",
   "start_url": "/",
   "display": "standalone",
@@ -20,7 +20,7 @@
     {
       "name": "New Chat",
       "url": "/?action=new-chat",
-      "description": "Start a new chat with CodeForge AI"
+      "description": "Start a new chat with Waziros AI"
     }
   ]
 }

@@ -1,5 +1,5 @@
-// CodeForge AI Service Worker
-const CACHE_NAME = 'codeforge-ai-v2';
+// Waziros AI Service Worker
+const CACHE_NAME = 'waziros-ai-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',

@@ -714,3 +714,37 @@ Stage Summary:
 - Supports HTML, CSS, JS, Python, JSON, images, and 80+ other file types
 - Files are displayed as attachments in chat messages and their content is sent to the AI
 - Images show thumbnail previews in both the input area and message bubbles
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Rename "CodeForge AI" to "Waziros AI" across the entire codebase
+
+Work Log:
+- Updated `src/app/layout.tsx`: Changed title, keywords, authors, and openGraph title from CodeForge AI to Waziros AI
+- Updated `src/components/codeforge/TopBar.tsx`: Changed branding text from "CodeForge AI" to "Waziros AI"
+- Updated `src/lib/llm.ts`: Changed HTTP-Referer from codeforge-ai.app to waziros-ai.app and X-Title from CodeForge AI to Waziros AI (both openrouter and opencode providers)
+- Updated `src/lib/localSettings.ts`: Changed SETTINGS_KEY from codeforge-settings to waziros-settings and ONBOARDED_KEY from codeforge-onboarded to waziros-onboarded
+- Updated `package.json`: Changed appId from com.codeforge.ai to com.waziros.ai and productName from CodeForge AI to Waziros AI
+- Updated `public/manifest.json`: Changed name, short_name, and shortcut description from CodeForge/Waziros AI
+- Updated `public/sw.js`: Changed service worker comment and CACHE_NAME from codeforge-ai to waziros-ai
+- Updated `electron/main.ts`: Changed window title from CodeForge AI to Waziros AI
+- Updated `.env.example`: Changed header comment from CodeForge AI to Waziros AI
+- Updated `src/app/page.tsx`: Changed 5 instances (project description, sidebar branding, version footer, textarea placeholder query, footer branding)
+- Updated `src/components/codeforge/OnboardingWizard.tsx`: Changed bottom brand text and welcome heading
+- Updated `src/components/codeforge/Terminal.tsx`: Changed welcome message
+- Updated `src/components/codeforge/LivePreview.tsx`: Changed download filenames (codeforge-project.zip → waziros-project.zip, codeforge-preview → waziros-preview)
+- Updated `src/components/codeforge/ChatPanel.tsx`: Changed 9 instances (download filenames, toast descriptions, heading, error label, sender labels, placeholder text)
+- Updated `src/app/api/chat/route.ts`: Changed all 6 agent system prompts (Planner, Coder, Debugger, Reviewer, Documenter, Default) from CodeForge AI to Waziros AI
+- Updated `src/app/api/terminal/route.ts`: Changed whoami response, git log author, and help command output
+- Updated `src/app/api/seed/route.ts`: Changed 7 instances (project description, Hello greeting, page title, badge text, alert messages, console log)
+- Did NOT change: `src/components/codeforge/` directory name (would break all imports), import paths, worklog.md, README.md, server-daemon.js
+- Lint check: 5 pre-existing errors in keep-alive.js and server-daemon.js (not modified); no new errors introduced
+- Dev server running and healthy
+
+Stage Summary:
+- Complete rebrand from "CodeForge AI" to "Waziros AI" across 17 files
+- All user-facing text updated: UI labels, system prompts, download filenames, metadata, PWA manifest, service worker
+- localStorage keys changed (codeforge-settings → waziros-settings, codeforge-onboarded → waziros-onboarded) — users will need to re-onboard
+- Directory name `src/components/codeforge/` preserved to avoid breaking imports
+- No new lint errors introduced

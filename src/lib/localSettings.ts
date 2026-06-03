@@ -9,8 +9,8 @@
  * as the primary mechanism, with the API as a best-effort backup.
  */
 
-const SETTINGS_KEY = 'codeforge-settings';
-const ONBOARDED_KEY = 'codeforge-onboarded';
+const SETTINGS_KEY = 'waziros-settings';
+const ONBOARDED_KEY = 'waziros-onboarded';
 
 /**
  * Save settings to localStorage.

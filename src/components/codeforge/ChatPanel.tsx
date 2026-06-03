@@ -675,12 +675,12 @@ const InlinePreview = React.memo(function InlinePreview({
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'codeforge-project.zip';
+        a.download = 'waziros-project.zip';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        toast.success('Download started!', { description: 'codeforge-project.zip' });
+        toast.success('Download started!', { description: 'waziros-project.zip' });
       } else {
         const srcdocContent = buildSrcdocForInline(cleanHtml, cleanCss, cleanJs);
         const cleanSrcdoc = srcdocContent.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
@@ -689,12 +689,12 @@ const InlinePreview = React.memo(function InlinePreview({
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'codeforge-preview.html';
+        a.download = 'waziros-preview.html';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        toast.success('Download started!', { description: 'codeforge-preview.html' });
+        toast.success('Download started!', { description: 'waziros-preview.html' });
       }
     } catch (error) {
       console.error('Download failed:', error);
@@ -1334,7 +1334,7 @@ function EmptyState({ onPromptClick }: { onPromptClick: (prompt: string) => void
           <Bot className="relative size-8 text-emerald-500" />
         </div>
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-zinc-100">CodeForge AI</h2>
+          <h2 className="text-xl font-semibold text-zinc-100">Waziros AI</h2>
           <p className="mt-1 text-sm text-zinc-500">
             Your intelligent coding companion. Ask me anything.
           </p>
@@ -1682,9 +1682,9 @@ const MessageBubble = React.memo(function MessageBubble({
             isUser ? 'text-zinc-500' : isPureError ? 'text-red-400/80' : 'text-emerald-400/80'
           }`}
         >
-          {isUser ? 'You' : isPureError ? 'CodeForge AI — Error' : (
+          {isUser ? 'You' : isPureError ? 'Waziros AI — Error' : (
             <>
-              CodeForge AI
+              Waziros AI
               {model && (
                 <span className="ml-1.5 text-zinc-600 font-normal">
                   via {model}
@@ -1864,7 +1864,7 @@ const StreamingMessage = React.memo(function StreamingMessage({
       <div className="flex flex-col gap-1 max-w-[85%] min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-emerald-400/80">
-            CodeForge AI
+            Waziros AI
             {model && (
               <span className="ml-1.5 text-zinc-600 font-normal">
                 via {model}
@@ -1929,7 +1929,7 @@ function TypingIndicator({ modelName }: { modelName: string }) {
       </div>
       <div className="flex flex-col gap-1">
         <span className="text-[11px] font-medium text-emerald-400/80">
-          CodeForge AI
+          Waziros AI
           {modelName && (
             <span className="ml-1.5 text-zinc-600 font-normal">
               via {modelName}
@@ -2229,7 +2229,7 @@ function MessageInput({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={attachments.length > 0 ? "Add a message about the file(s)..." : "Ask CodeForge AI..."}
+            placeholder={attachments.length > 0 ? "Add a message about the file(s)..." : "Ask Waziros AI..."}
             disabled={isLoading}
             rows={1}
             className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 disabled:opacity-50"
