@@ -36,20 +36,9 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import ApiKeyGuide, { QuickProviderCards } from './ApiKeyGuide';
+import { ProviderKey, ProviderDisplayInfo, PROVIDER_DISPLAY_INFO } from '@/lib/providers';
 
-// ─── Provider / Model Definitions ────────────────────────────────────────────
-
-type ProviderKey =
-  | 'openai'
-  | 'anthropic'
-  | 'gemini'
-  | 'qwen'
-  | 'deepseek'
-  | 'mistral'
-  | 'openrouter'
-  | 'opencode'
-  | 'groq'
-  | 'together';
+// ─── Model Definitions ────────────────────────────────────────────────────
 
 interface DynamicModel {
   id: string;
@@ -57,65 +46,6 @@ interface DynamicModel {
   provider: string;
   isFree: boolean;
 }
-
-interface ProviderInfo {
-  name: string;
-  icon: string;
-  keyHint?: string;
-}
-
-const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
-  openai: {
-    name: 'OpenAI',
-    icon: '🟢',
-    keyHint: 'sk-... (from platform.openai.com)',
-  },
-  anthropic: {
-    name: 'Anthropic',
-    icon: '🟠',
-    keyHint: 'sk-ant-... (from console.anthropic.com)',
-  },
-  gemini: {
-    name: 'Google Gemini',
-    icon: '🔵',
-    keyHint: 'AI... (from aistudio.google.com)',
-  },
-  qwen: {
-    name: 'Qwen',
-    icon: '🟣',
-    keyHint: 'sk-... (from dashscope.aliyuncs.com)',
-  },
-  deepseek: {
-    name: 'DeepSeek',
-    icon: '🔷',
-    keyHint: 'sk-... (from platform.deepseek.com)',
-  },
-  mistral: {
-    name: 'Mistral',
-    icon: '🟡',
-    keyHint: '... (from console.mistral.ai)',
-  },
-  openrouter: {
-    name: 'OpenRouter',
-    icon: '🌐',
-    keyHint: 'sk-or-... (from openrouter.ai)',
-  },
-  opencode: {
-    name: 'OpenCode Zen',
-    icon: '🧘',
-    keyHint: 'oc-... (from opencode.ai/zen)',
-  },
-  groq: {
-    name: 'Groq',
-    icon: '⚡',
-    keyHint: 'gsk_... (from console.groq.com)',
-  },
-  together: {
-    name: 'Together AI',
-    icon: '🤝',
-    keyHint: '... (from api.together.xyz)',
-  },
-};
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
 
@@ -299,7 +229,7 @@ export default function OnboardingWizard() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnectionStatus1('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[provider1].name}` });
+        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[provider1].name}` });
       } else {
         setConnectionStatus1('error');
         toast.error('Connection failed', { description: data.error || 'Could not connect.' });
@@ -328,7 +258,7 @@ export default function OnboardingWizard() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnectionStatus2('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[provider2].name}` });
+        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[provider2].name}` });
       } else {
         setConnectionStatus2('error');
         toast.error('Connection failed', { description: data.error || 'Could not connect.' });
@@ -378,11 +308,11 @@ export default function OnboardingWizard() {
 
       if (result.apiSaved) {
         toast.success('Setup complete!', {
-          description: `You're all set with ${PROVIDERS[provider1].name} — ${effectiveModel}`,
+          description: `You're all set with ${PROVIDER_DISPLAY_INFO[provider1].name} — ${effectiveModel}`,
         });
       } else {
         toast.success('Setup complete!', {
-          description: `You're all set with ${PROVIDERS[provider1].name} — ${effectiveModel}`,
+          description: `You're all set with ${PROVIDER_DISPLAY_INFO[provider1].name} — ${effectiveModel}`,
         });
       }
     } catch (err) {
@@ -724,14 +654,14 @@ function Step2ApiKeys({
         <div className="flex items-center gap-2">
           <div className="size-2 rounded-full bg-emerald-500" />
           <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Primary Provider (Active)</span>
-          <span className="text-base">{PROVIDERS[provider1].icon}</span>
+          <span className="text-base">{PROVIDER_DISPLAY_INFO[provider1].icon}</span>
         </div>
         <Select value={provider1} onValueChange={onProvider1Change}>
           <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
           <SelectContent className="bg-zinc-800 border-zinc-700">
-            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
+            {(Object.entries(PROVIDER_DISPLAY_INFO) as [ProviderKey, ProviderDisplayInfo][])
               .filter(([key]) => key !== provider2)
               .map(([key, info]) => (
                 <SelectItem key={key} value={key} className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100">
@@ -746,7 +676,7 @@ function Step2ApiKeys({
             type={showApiKey1 ? 'text' : 'password'}
             value={apiKey1}
             onChange={(e) => onApiKey1Change(e.target.value)}
-            placeholder={PROVIDERS[provider1].keyHint || 'sk-...'}
+            placeholder={PROVIDER_DISPLAY_INFO[provider1].keyHint || 'sk-...'}
             className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm focus-visible:border-emerald-500/50"
             autoFocus
           />
@@ -773,7 +703,7 @@ function Step2ApiKeys({
         )}
         {connectionStatus1 === 'success' && (
           <span className="flex items-center gap-1 text-xs text-emerald-400">
-            <CheckCircle2 className="size-3" /> Connected to {PROVIDERS[provider1].name}
+            <CheckCircle2 className="size-3" /> Connected to {PROVIDER_DISPLAY_INFO[provider1].name}
           </span>
         )}
         {connectionStatus1 === 'error' && (
@@ -788,7 +718,7 @@ function Step2ApiKeys({
         <div className="flex items-center gap-2">
           <div className="size-2 rounded-full bg-zinc-500" />
           <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Secondary Provider (Backup)</span>
-          <span className="text-base">{PROVIDERS[provider2].icon}</span>
+          <span className="text-base">{PROVIDER_DISPLAY_INFO[provider2].icon}</span>
           <span className="ml-auto text-[9px] text-zinc-600">Optional</span>
         </div>
         <Select value={provider2} onValueChange={onProvider2Change}>
@@ -796,7 +726,7 @@ function Step2ApiKeys({
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
           <SelectContent className="bg-zinc-800 border-zinc-700">
-            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
+            {(Object.entries(PROVIDER_DISPLAY_INFO) as [ProviderKey, ProviderDisplayInfo][])
               .filter(([key]) => key !== provider1)
               .map(([key, info]) => (
                 <SelectItem key={key} value={key} className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100">
@@ -811,7 +741,7 @@ function Step2ApiKeys({
             type={showApiKey2 ? 'text' : 'password'}
             value={apiKey2}
             onChange={(e) => onApiKey2Change(e.target.value)}
-            placeholder={PROVIDERS[provider2].keyHint || 'sk-...'}
+            placeholder={PROVIDER_DISPLAY_INFO[provider2].keyHint || 'sk-...'}
             className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-9 font-mono text-sm focus-visible:border-emerald-500/50"
           />
           <Button
@@ -837,7 +767,7 @@ function Step2ApiKeys({
         )}
         {connectionStatus2 === 'success' && (
           <span className="flex items-center gap-1 text-xs text-emerald-400">
-            <CheckCircle2 className="size-3" /> Connected to {PROVIDERS[provider2].name}
+            <CheckCircle2 className="size-3" /> Connected to {PROVIDER_DISPLAY_INFO[provider2].name}
           </span>
         )}
         {connectionStatus2 === 'error' && (
@@ -880,7 +810,7 @@ function Step3ModelSelection({
   onMaxTokensChange,
   onRefreshModels,
 }: Step3Props) {
-  const providerInfo = PROVIDERS[provider];
+  const providerInfo = PROVIDER_DISPLAY_INFO[provider];
 
   // Group models for display
   const groupedModels = (provider === 'openrouter' || provider === 'opencode')

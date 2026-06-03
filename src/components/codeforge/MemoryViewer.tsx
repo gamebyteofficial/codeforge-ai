@@ -498,6 +498,7 @@ export default function MemoryViewer() {
   const memories = useMemoryState(s => s.memories);
   const setMemories = useMemoryState(s => s.setMemories);
   const addMemory = useMemoryState(s => s.addMemory);
+  const removeMemory = useMemoryState(s => s.removeMemory);
   const currentProject = useProjectState(s => s.currentProject);
 
   const [filter, setFilter] = useState<FilterType>('all');
@@ -579,15 +580,15 @@ export default function MemoryViewer() {
       try {
         const res = await fetch(`/api/memory?id=${id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Failed to delete memory');
-        // Remove from store
-        setMemories(memories.filter((m) => m.id !== id));
+        // Remove from store using action (avoids stale closure)
+        removeMemory(id);
       } catch (error) {
         console.error('Failed to delete memory:', error);
       } finally {
         setDeletingId(null);
       }
     },
-    [memories, setMemories],
+    [removeMemory],
   );
 
   // -------------------------------------------------------------------------

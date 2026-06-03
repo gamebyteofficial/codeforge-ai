@@ -48,20 +48,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ApiKeyGuide from './ApiKeyGuide';
+import { ProviderKey, ProviderDisplayInfo, PROVIDER_DISPLAY_INFO } from '@/lib/providers';
 
-// ─── Provider / Model Definitions ────────────────────────────────────────────
-
-type ProviderKey =
-  | 'openai'
-  | 'anthropic'
-  | 'gemini'
-  | 'qwen'
-  | 'deepseek'
-  | 'mistral'
-  | 'openrouter'
-  | 'opencode'
-  | 'groq'
-  | 'together';
+// ─── Model Definitions ────────────────────────────────────────────────────
 
 interface DynamicModel {
   id: string;
@@ -69,65 +58,6 @@ interface DynamicModel {
   provider: string;
   isFree: boolean;
 }
-
-interface ProviderInfo {
-  name: string;
-  icon: string;
-  keyHint?: string;
-}
-
-const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
-  openai: {
-    name: 'OpenAI',
-    icon: '🟢',
-    keyHint: 'sk-... (from platform.openai.com)',
-  },
-  anthropic: {
-    name: 'Anthropic',
-    icon: '🟠',
-    keyHint: 'sk-ant-... (from console.anthropic.com)',
-  },
-  gemini: {
-    name: 'Google Gemini',
-    icon: '🔵',
-    keyHint: 'AI... (from aistudio.google.com)',
-  },
-  qwen: {
-    name: 'Qwen',
-    icon: '🟣',
-    keyHint: 'sk-... (from dashscope.aliyuncs.com)',
-  },
-  deepseek: {
-    name: 'DeepSeek',
-    icon: '🔷',
-    keyHint: 'sk-... (from platform.deepseek.com)',
-  },
-  mistral: {
-    name: 'Mistral',
-    icon: '🟡',
-    keyHint: '... (from console.mistral.ai)',
-  },
-  openrouter: {
-    name: 'OpenRouter',
-    icon: '🌐',
-    keyHint: 'sk-or-... (from openrouter.ai)',
-  },
-  opencode: {
-    name: 'OpenCode Zen',
-    icon: '🧘',
-    keyHint: 'oc-... (from opencode.ai/zen)',
-  },
-  groq: {
-    name: 'Groq',
-    icon: '⚡',
-    keyHint: 'gsk_... (from console.groq.com)',
-  },
-  together: {
-    name: 'Together AI',
-    icon: '🤝',
-    keyHint: '... (from api.together.xyz)',
-  },
-};
 
 // ─── Default Settings ────────────────────────────────────────────────────────
 
@@ -178,7 +108,7 @@ function ApiKeyInputSection({
   isTesting: boolean;
   excludeProviders?: string[];
 }) {
-  const providerInfo = PROVIDERS[provider];
+  const providerInfo = PROVIDER_DISPLAY_INFO[provider];
 
   return (
     <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/20 p-4">
@@ -201,7 +131,7 @@ function ApiKeyInputSection({
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
           <SelectContent className="bg-zinc-800 border-zinc-700">
-            {(Object.entries(PROVIDERS) as [ProviderKey, ProviderInfo][])
+            {(Object.entries(PROVIDER_DISPLAY_INFO) as [ProviderKey, ProviderDisplayInfo][])
               .filter(([key]) => !excludeProviders?.includes(key))
               .map(([key, info]) => (
                 <SelectItem
@@ -472,7 +402,7 @@ export default function SettingsModal() {
     setConnectionStatus2('idle');
     setConnectionStatus3('idle');
     setConnectionStatus4('idle');
-    toast.info('Providers swapped', { description: `${PROVIDERS[currentProvider2].name} is now your primary provider` });
+    toast.info('Providers swapped', { description: `${PROVIDER_DISPLAY_INFO[currentProvider2].name} is now your primary provider` });
   };
 
   // Test primary connection
@@ -492,7 +422,7 @@ export default function SettingsModal() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnectionStatus1('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider1].name}` });
+        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider1].name}` });
       } else {
         setConnectionStatus1('error');
         toast.error('Connection failed', { description: data.error || 'Could not connect.' });
@@ -522,7 +452,7 @@ export default function SettingsModal() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnectionStatus2('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider2].name}` });
+        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider2].name}` });
       } else {
         setConnectionStatus2('error');
         toast.error('Connection failed', { description: data.error || 'Could not connect.' });
@@ -552,7 +482,7 @@ export default function SettingsModal() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnectionStatus3('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider3].name}` });
+        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider3].name}` });
       } else {
         setConnectionStatus3('error');
         toast.error('Connection failed', { description: data.error || 'Could not connect.' });
@@ -582,7 +512,7 @@ export default function SettingsModal() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnectionStatus4('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDERS[currentProvider4].name}` });
+        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider4].name}` });
       } else {
         setConnectionStatus4('error');
         toast.error('Connection failed', { description: data.error || 'Could not connect.' });
@@ -666,7 +596,7 @@ export default function SettingsModal() {
         if (paid.length) groups.push({ label: `💎 Paid Models (${paid.length})`, models: paid });
         return groups;
       })()
-    : [{ label: PROVIDERS[currentProvider1 as ProviderKey]?.name || currentProvider1, models }];
+    : [{ label: PROVIDER_DISPLAY_INFO[currentProvider1 as ProviderKey]?.name || currentProvider1, models }];
 
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -897,16 +827,16 @@ export default function SettingsModal() {
                   <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/10 px-3 py-2">
                     <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-[11px] text-zinc-500">
-                      Primary: <span className="text-zinc-300">{PROVIDERS[currentProvider1]?.name}</span>
+                      Primary: <span className="text-zinc-300">{PROVIDER_DISPLAY_INFO[currentProvider1]?.name}</span>
                       {apiKey1 && <span className="text-emerald-400 ml-1">✓</span>}
                       <span className="mx-2 text-zinc-700">|</span>
-                      Secondary: <span className="text-zinc-300">{PROVIDERS[currentProvider2]?.name}</span>
+                      Secondary: <span className="text-zinc-300">{PROVIDER_DISPLAY_INFO[currentProvider2]?.name}</span>
                       {apiKey2 && <span className="text-emerald-400 ml-1">✓</span>}
                       <span className="mx-2 text-zinc-700">|</span>
-                      Provider 3: <span className="text-zinc-300">{PROVIDERS[currentProvider3]?.name}</span>
+                      Provider 3: <span className="text-zinc-300">{PROVIDER_DISPLAY_INFO[currentProvider3]?.name}</span>
                       {apiKey3 && <span className="text-emerald-400 ml-1">✓</span>}
                       <span className="mx-2 text-zinc-700">|</span>
-                      Provider 4: <span className="text-zinc-300">{PROVIDERS[currentProvider4]?.name}</span>
+                      Provider 4: <span className="text-zinc-300">{PROVIDER_DISPLAY_INFO[currentProvider4]?.name}</span>
                       {apiKey4 && <span className="text-emerald-400 ml-1">✓</span>}
                     </span>
                   </div>

@@ -7,6 +7,7 @@ import FileExplorer from '@/components/codeforge/FileExplorer';
 import TopBar from '@/components/codeforge/TopBar';
 import SettingsModal from '@/components/codeforge/SettingsModal';
 import OnboardingWizard from '@/components/codeforge/OnboardingWizard';
+import PanelErrorBoundary from '@/components/codeforge/ErrorBoundary';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import {
@@ -358,16 +359,24 @@ export default function Home() {
 
                   {/* Sidebar content — lazy loaded panels wrapped in Suspense */}
                   <div className="flex-1 min-w-0 overflow-hidden">
-                    {sidebarTab === 'files' && <FileExplorer />}
+                    {sidebarTab === 'files' && (
+                      <PanelErrorBoundary name="Files">
+                        <FileExplorer />
+                      </PanelErrorBoundary>
+                    )}
                     {sidebarTab === 'tasks' && (
-                      <Suspense fallback={<PanelSkeleton />}>
-                        <TaskTracker />
-                      </Suspense>
+                      <PanelErrorBoundary name="Tasks">
+                        <Suspense fallback={<PanelSkeleton />}>
+                          <TaskTracker />
+                        </Suspense>
+                      </PanelErrorBoundary>
                     )}
                     {sidebarTab === 'memory' && (
-                      <Suspense fallback={<PanelSkeleton />}>
-                        <MemoryViewer />
-                      </Suspense>
+                      <PanelErrorBoundary name="Memory">
+                        <Suspense fallback={<PanelSkeleton />}>
+                          <MemoryViewer />
+                        </Suspense>
+                      </PanelErrorBoundary>
                     )}
                   </div>
                 </div>
@@ -384,7 +393,9 @@ export default function Home() {
                 <ResizablePanelGroup direction="horizontal" className="h-full">
                   {/* Chat Panel */}
                   <ResizablePanel defaultSize={40} minSize={25} maxSize={60}>
-                    <ChatPanel />
+                    <PanelErrorBoundary name="Chat">
+                      <ChatPanel />
+                    </PanelErrorBoundary>
                   </ResizablePanel>
                   <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
                   {/* Code Editor */}
@@ -415,7 +426,9 @@ export default function Home() {
                         </div>
                       )}
                       <div className="flex-1 min-h-0">
-                        <CodeEditor />
+                        <PanelErrorBoundary name="Editor">
+                          <CodeEditor />
+                        </PanelErrorBoundary>
                       </div>
                     </div>
                   </ResizablePanel>
@@ -424,9 +437,11 @@ export default function Home() {
                     <>
                       <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
                       <ResizablePanel defaultSize={35} minSize={20} maxSize={60}>
-                        <Suspense fallback={<PanelSkeleton />}>
-                          <LivePreview />
-                        </Suspense>
+                        <PanelErrorBoundary name="Preview">
+                          <Suspense fallback={<PanelSkeleton />}>
+                            <LivePreview />
+                          </Suspense>
+                        </PanelErrorBoundary>
                       </ResizablePanel>
                     </>
                   )}
@@ -438,9 +453,11 @@ export default function Home() {
                 <>
                   <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 h-px" />
                   <ResizablePanel defaultSize={35} minSize={15} maxSize={60}>
-                    <Suspense fallback={<PanelSkeleton />}>
-                      <Terminal />
-                    </Suspense>
+                    <PanelErrorBoundary name="Terminal">
+                      <Suspense fallback={<PanelSkeleton />}>
+                        <Terminal />
+                      </Suspense>
+                    </PanelErrorBoundary>
                   </ResizablePanel>
                 </>
               )}

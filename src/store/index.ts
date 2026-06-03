@@ -85,6 +85,9 @@ export interface TerminalLine {
 
 export type AgentType = 'planner' | 'coder' | 'debugger' | 'reviewer' | 'documenter';
 
+// Maximum number of terminal lines to keep in state (prevents O(n²) memory churn)
+const MAX_TERMINAL_LINES = 500;
+
 export type SidebarTab = 'files' | 'tasks' | 'memory';
 export type BottomTab = 'terminal' | 'output';
 
@@ -130,6 +133,8 @@ interface AppState {
   memories: Memory[];
   setMemories: (memories: Memory[]) => void;
   addMemory: (memory: Memory) => void;
+  removeMemory: (id: string) => void;
+  updateMemory: (id: string, data: Partial<Memory>) => void;
 
   // Terminal
   terminalLines: TerminalLine[];
@@ -224,11 +229,19 @@ export const useAppStore = create<AppState>((set) => ({
   memories: [],
   setMemories: (memories) => set({ memories }),
   addMemory: (memory) => set((state) => ({ memories: [memory, ...state.memories] })),
+  removeMemory: (id) =>
+    set((state) => ({ memories: state.memories.filter((m) => m.id !== id) })),
+  updateMemory: (id, data) =>
+    set((state) => ({
+      memories: state.memories.map((m) => (m.id === id ? { ...m, ...data } : m)),
+    })),
 
   // Terminal
   terminalLines: [],
   addTerminalLine: (line) =>
-    set((state) => ({ terminalLines: [...state.terminalLines, line] })),
+    set((state) => ({
+      terminalLines: [...state.terminalLines.slice(-MAX_TERMINAL_LINES + 1), line],
+    })),
   clearTerminal: () => set({ terminalLines: [] }),
 
   // UI State

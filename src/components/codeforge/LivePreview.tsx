@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { usePreviewState } from '@/store/hooks';
+import { buildSrcdoc } from '@/lib/preview-builder';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -74,56 +75,7 @@ function computePreviewHash(html: string, css: string, js: string): string {
   return `${contentHash(html)}:${contentHash(css)}:${contentHash(js)}`;
 }
 
-// ---------------------------------------------------------------------------
-// Console capture script injected into the iframe
-// ---------------------------------------------------------------------------
 
-const CONSOLE_CAPTURE_SCRIPT = `
-<script>
-(function() {
-  var _id = 0;
-  function send(level, args) {
-    try {
-      var strs = [];
-      for (var i = 0; i < args.length; i++) {
-        try {
-          var a = args[i];
-          if (a === null) strs.push('null');
-          else if (a === undefined) strs.push('undefined');
-          else if (typeof a === 'object') {
-            try { strs.push(JSON.stringify(a, null, 2)); }
-            catch(e) { strs.push(String(a)); }
-          }
-          else strs.push(String(a));
-        } catch(e) { strs.push('[unknown]'); }
-      }
-      window.parent.postMessage({
-        type: '__preview_console',
-        level: level,
-        args: strs,
-        id: ++_id,
-        ts: Date.now()
-      }, '*');
-    } catch(e) {}
-  }
-  var origLog = console.log;
-  var origWarn = console.warn;
-  var origError = console.error;
-  var origInfo = console.info;
-  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
-  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
-  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
-  console.info = function() { send('info', arguments); origInfo.apply(console, arguments); };
-  window.onerror = function(msg, src, line, col, err) {
-    send('error', [msg + ' (line ' + line + ':' + col + ')']);
-    return false;
-  };
-  window.addEventListener('unhandledrejection', function(e) {
-    send('error', ['Unhandled Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason))]);
-  });
-})();
-<\/script>
-`;
 
 // ---------------------------------------------------------------------------
 // Error Boundary for iframe
@@ -257,137 +209,6 @@ export default function LivePreview() {
   }, [previewFiles.html]);
 
   const hasContent = !isEmpty || isHtmlFragment;
-
-  // Build srcdoc with console capture injected
-  const buildSrcdoc = useCallback((html: string, css: string, js: string) => {
-    // ── Always strip external CSS/JS file references from HTML ──
-    // When AI generates multi-file projects (index.html + styles.css + script.js),
-    // the HTML often contains <link href="styles.css"> and <script src="script.js">
-    // Since we inline CSS/JS into the srcdoc, these references would cause 404s.
-    let cleanedHtml = html;
-
-    // Remove <link> tags referencing local CSS files (styles.css, style.css, etc.)
-    cleanedHtml = cleanedHtml.replace(
-      /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
-      (match, href: string) => {
-        // Only strip local/relative CSS references (not CDN URLs)
-        if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
-          return match; // Keep CDN references
-        }
-        return ''; // Strip local file references
-      }
-    );
-
-    // Remove <script src="..."> tags referencing local JS files
-    cleanedHtml = cleanedHtml.replace(
-      /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
-      (match, src: string) => {
-        // Only strip local/relative JS references (not CDN URLs)
-        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
-          return match; // Keep CDN references
-        }
-        return ''; // Strip local file references
-      }
-    );
-
-    // Also remove self-closing <script src="..."/> variants
-    cleanedHtml = cleanedHtml.replace(
-      /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*\/>/gi,
-      (match, src: string) => {
-        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
-          return match;
-        }
-        return '';
-      }
-    );
-
-    // Clean up empty lines left by removed tags
-    cleanedHtml = cleanedHtml.replace(/\n\s*\n\s*\n/g, '\n\n');
-
-    // ── If HTML is a self-contained document with no separate CSS/JS, use as-is (with refs already stripped) ──
-    if (cleanedHtml && !css && !js && (/<html[\s>]/i.test(cleanedHtml) || /<!DOCTYPE/i.test(cleanedHtml))) {
-      let doc = cleanedHtml;
-      // Inject console capture and meta tags
-      if (/<head[\s>]/i.test(doc)) {
-        doc = doc.replace(
-          /(<head[^>]*>)/i,
-          `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
-        );
-      } else {
-        // No <head>, add one
-        doc = doc.replace(
-          /(<html[^>]*>)/i,
-          `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
-        );
-      }
-      return doc;
-    }
-
-    // ── Detect if HTML is a full document or just a fragment ──
-    const isFullDocument =
-      /<!DOCTYPE\s+html/i.test(cleanedHtml) ||
-      /<html[\s>]/i.test(cleanedHtml);
-
-    if (isFullDocument) {
-      // ── Full HTML document: inject CSS/JS into the existing structure ──
-      let doc = cleanedHtml;
-
-      // Inject console capture script right after <head> or at start
-      if (/<head[\s>]/i.test(doc)) {
-        doc = doc.replace(
-          /(<head[^>]*>)/i,
-          `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
-        );
-      } else {
-        // No <head>, add one
-        doc = doc.replace(
-          /(<html[^>]*>)/i,
-          `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
-        );
-      }
-
-      // Inject inline CSS right before </head> (or after <head> content)
-      if (css) {
-        const styleBlock = `\n<style>\n${css}\n</style>`;
-        if (/<\/head>/i.test(doc)) {
-          doc = doc.replace(/<\/head>/i, `${styleBlock}\n</head>`);
-        } else if (/<head[^>]*>/i.test(doc)) {
-          doc = doc.replace(/(<head[^>]*>)/i, `$1${styleBlock}`);
-        }
-      }
-
-      // Inject inline JS — must NOT wrap in try/catch because that creates a
-      // block scope, which prevents function declarations from being global
-      // (breaking onclick="myFunction()" handlers in the HTML).
-      if (js) {
-        // Add a visual error display handler (doesn't wrap user code)
-        const errorHandler = `\n<script>\nwindow.addEventListener('error',function(e){\n  var d=document.createElement('div');\n  d.style.cssText='color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;';\n  d.textContent='Error: '+(e.message||'Unknown error');\n  document.body.appendChild(d);\n});\n</script>`;
-        const scriptBlock = `\n<script>\n${js}\n</script>`;
-        if (/<\/body>/i.test(doc)) {
-          doc = doc.replace(/<\/body>/i, `${errorHandler}${scriptBlock}\n</body>`);
-        } else {
-          doc = doc.replace(/<\/html>/i, `${errorHandler}${scriptBlock}\n</html>`);
-        }
-      }
-
-      return doc;
-    }
-
-    // ── HTML fragment: wrap in a complete document ──
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  ${css ? `<style>\n${css}\n</style>` : ''}
-  ${CONSOLE_CAPTURE_SCRIPT}
-</head>
-<body>
-  ${cleanedHtml}
-  ${js ? `<script>\nwindow.addEventListener('error',function(e){var d=document.createElement('div');d.style.cssText='color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;';d.textContent='Error: '+(e.message||'Unknown error');document.body.appendChild(d);});\n</script>\n<script>\n${js}\n</script>` : ''}
-</body>
-</html>`;
-  }, []);
 
   // Listen for console messages from iframe
   useEffect(() => {

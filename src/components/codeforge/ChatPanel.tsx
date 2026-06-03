@@ -52,6 +52,7 @@ import {
 import { useAppStore, type AgentType, type ProjectFile, type FileAttachment } from '@/store';
 import { useStore, useChatState, useFileState, useUIState, useProjectState } from '@/store/hooks';
 import { parseFilesFromResponse, type ParsedFile } from '@/lib/file-parser';
+import { buildSrcdoc } from '@/lib/preview-builder';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -113,6 +114,13 @@ function classifyCodeBlock(lang: string, fileName?: string): 'html' | 'css' | 'j
 function extractPreviewContent(text: string): { html: string; css: string; js: string } | null {
   // Early exit: if text is short and contains no code block markers, skip entirely
   if (text.length < 20 && !CODE_BLOCK_INDICATOR.test(text)) return null;
+
+  // Prevent memory leak: clear cache if input is excessively large
+  if (text.length > 500_000) {
+    previewCache.lastInput = '';
+    previewCache.lastResult = null;
+    return null;
+  }
 
   // Return cached result if input hasn't changed
   if (text === previewCache.lastInput) {
@@ -419,182 +427,6 @@ const VISIBLE_MESSAGE_LIMIT = 50;
 const PREVIEW_THROTTLE_MS = 300;
 
 // ---------------------------------------------------------------------------
-// Console capture script injected into inline preview iframes
-// ---------------------------------------------------------------------------
-
-const CONSOLE_CAPTURE_SCRIPT = `
-<script>
-(function() {
-  var _id = 0;
-  function send(level, args) {
-    try {
-      var strs = [];
-      for (var i = 0; i < args.length; i++) {
-        try {
-          var a = args[i];
-          if (a === null) strs.push('null');
-          else if (a === undefined) strs.push('undefined');
-          else if (typeof a === 'object') {
-            try { strs.push(JSON.stringify(a, null, 2)); }
-            catch(e) { strs.push(String(a)); }
-          }
-          else strs.push(String(a));
-        } catch(e) { strs.push('[unknown]'); }
-      }
-      window.parent.postMessage({
-        type: '__preview_console',
-        level: level,
-        args: strs,
-        id: ++_id,
-        ts: Date.now()
-      }, '*');
-    } catch(e) {}
-  }
-  var origLog = console.log;
-  var origWarn = console.warn;
-  var origError = console.error;
-  var origInfo = console.info;
-  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
-  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
-  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
-  console.info = function() { send('info', arguments); origInfo.apply(console, arguments); };
-  window.onerror = function(msg, src, line, col, err) {
-    send('error', [msg + ' (line ' + line + ':' + col + ')']);
-    return false;
-  };
-  window.addEventListener('unhandledrejection', function(e) {
-    send('error', ['Unhandled Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason))]);
-  });
-})();
-<\/script>
-`;
-
-// ---------------------------------------------------------------------------
-// buildSrcdocForInline – builds a self-contained HTML document for the inline
-// preview iframe (extracted from LivePreview's buildSrcdoc)
-// ---------------------------------------------------------------------------
-
-function buildSrcdocForInline(html: string, css: string, js: string): string {
-  // ── Always strip external CSS/JS file references from HTML ──
-  let cleanedHtml = html;
-
-  // Remove <link> tags referencing local CSS files
-  cleanedHtml = cleanedHtml.replace(
-    /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
-    (match, href: string) => {
-      if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
-        return match;
-      }
-      return '';
-    }
-  );
-
-  // Remove <script src="..."> tags referencing local JS files
-  cleanedHtml = cleanedHtml.replace(
-    /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
-    (match, src: string) => {
-      if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
-        return match;
-      }
-      return '';
-    }
-  );
-
-  // Also remove self-closing <script src="..."/> variants
-  cleanedHtml = cleanedHtml.replace(
-    /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*\/>/gi,
-    (match, src: string) => {
-      if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
-        return match;
-      }
-      return '';
-    }
-  );
-
-  // Clean up empty lines
-  cleanedHtml = cleanedHtml.replace(/\n\s*\n\s*\n/g, '\n\n');
-
-  // Self-contained document with no separate CSS/JS → use as-is (with refs already stripped)
-  if (cleanedHtml && !css && !js && (/<html[\s>]/i.test(cleanedHtml) || /<!DOCTYPE/i.test(cleanedHtml))) {
-    let doc = cleanedHtml;
-    if (/<head[\s>]/i.test(doc)) {
-      doc = doc.replace(
-        /(<head[^>]*>)/i,
-        `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
-      );
-    } else {
-      doc = doc.replace(
-        /(<html[^>]*>)/i,
-        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
-      );
-    }
-    return doc;
-  }
-
-  const isFullDocument =
-    /<!DOCTYPE\s+html/i.test(cleanedHtml) ||
-    /<html[\s>]/i.test(cleanedHtml);
-
-  if (isFullDocument) {
-    let doc = cleanedHtml;
-
-    // Inject console capture script
-    if (/<head[\s>]/i.test(doc)) {
-      doc = doc.replace(
-        /(<head[^>]*>)/i,
-        `$1\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}`
-      );
-    } else {
-      doc = doc.replace(
-        /(<html[^>]*>)/i,
-        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${CONSOLE_CAPTURE_SCRIPT}\n</head>`
-      );
-    }
-
-    // Inject inline CSS
-    if (css) {
-      const styleBlock = `\n<style>\n${css}\n</style>`;
-      if (/<\/head>/i.test(doc)) {
-        doc = doc.replace(/<\/head>/i, `${styleBlock}\n</head>`);
-      } else if (/<head[^>]*>/i.test(doc)) {
-        doc = doc.replace(/(<head[^>]*>)/i, `$1${styleBlock}`);
-      }
-    }
-
-    // Inject inline JS — must NOT wrap in try/catch because that creates a
-    // block scope, which prevents function declarations from being global
-    // (breaking onclick="myFunction()" handlers in the HTML).
-    if (js) {
-      // Add a visual error display handler (doesn't wrap user code)
-      const errorHandler = `\n<script>\nwindow.addEventListener('error',function(e){\n  var d=document.createElement('div');\n  d.style.cssText='color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;';\n  d.textContent='Error: '+(e.message||'Unknown error');\n  document.body.appendChild(d);\n});\n</script>`;
-      const scriptBlock = `\n<script>\n${js}\n</script>`;
-      if (/<\/body>/i.test(doc)) {
-        doc = doc.replace(/<\/body>/i, `${errorHandler}${scriptBlock}\n</body>`);
-      } else {
-        doc = doc.replace(/<\/html>/i, `${errorHandler}${scriptBlock}\n</html>`);
-      }
-    }
-
-    return doc;
-  }
-
-  // HTML fragment: wrap in a complete document
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  ${css ? `<style>\n${css}\n</style>` : ''}
-  ${CONSOLE_CAPTURE_SCRIPT}
-</head>
-<body>
-  ${cleanedHtml}
-  ${js ? `<script>\nwindow.addEventListener('error',function(e){var d=document.createElement('div');d.style.cssText='color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;';d.textContent='Error: '+(e.message||'Unknown error');document.body.appendChild(d);});\n</script>\n<script>\n${js}\n</script>` : ''}
-</body>
-</html>`;
-}
-
-// ---------------------------------------------------------------------------
 // InlinePreview – embedded iframe preview inside chat message bubbles
 // ---------------------------------------------------------------------------
 
@@ -611,7 +443,7 @@ const InlinePreview = React.memo(function InlinePreview({
   const [iframeKey, setIframeKey] = useState(0);
 
   const srcdoc = useMemo(
-    () => buildSrcdocForInline(html, css, js),
+    () => buildSrcdoc(html, css, js),
     [html, css, js]
   );
 
@@ -686,7 +518,7 @@ const InlinePreview = React.memo(function InlinePreview({
         URL.revokeObjectURL(url);
         toast.success('Download started!', { description: 'waziros-project.zip' });
       } else {
-        const srcdocContent = buildSrcdocForInline(cleanHtml, cleanCss, cleanJs);
+        const srcdocContent = buildSrcdoc(cleanHtml, cleanCss, cleanJs);
         const cleanSrcdoc = srcdocContent.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
 
         const blob = new Blob([cleanSrcdoc], { type: 'text/html' });

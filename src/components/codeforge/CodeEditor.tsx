@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
@@ -11,17 +11,7 @@ import {
   Eye,
   FileCode2,
   X,
-  FileJson,
-  FileText,
-  FileType,
-  Braces,
   Hash,
-  Terminal,
-  Palette,
-  Layout,
-  Database,
-  Settings,
-  Code2,
   Play,
   WrapText,
   ZoomIn,
@@ -39,171 +29,111 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
+import { getLanguageFromFileName, getFileTypeColor, getFileIcon } from '@/lib/file-icons';
 
 // ---------------------------------------------------------------------------
-// Language utilities
+// Tab context menu
 // ---------------------------------------------------------------------------
 
-/** Map file extensions to react-syntax-highlighter language names */
-function getLanguageFromFileName(fileName: string): string {
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  const map: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'tsx',
-    js: 'javascript',
-    jsx: 'jsx',
-    py: 'python',
-    rb: 'ruby',
-    go: 'go',
-    rs: 'rust',
-    java: 'java',
-    cpp: 'cpp',
-    c: 'c',
-    cs: 'csharp',
-    php: 'php',
-    swift: 'swift',
-    kt: 'kotlin',
-    sql: 'sql',
-    html: 'markup',
-    htm: 'markup',
-    xml: 'markup',
-    svg: 'markup',
-    css: 'css',
-    scss: 'scss',
-    less: 'less',
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    toml: 'toml',
-    md: 'markdown',
-    sh: 'bash',
-    bash: 'bash',
-    zsh: 'bash',
-    dockerfile: 'docker',
-    graphql: 'graphql',
-    gql: 'graphql',
-    prisma: 'prisma',
-    dart: 'dart',
-    lua: 'lua',
-    r: 'r',
-    scala: 'scala',
-    vue: 'markup',
-    svelte: 'markup',
-  };
-  return map[ext] ?? (ext || 'text');
+interface TabContextMenuProps {
+  x: number;
+  y: number;
+  fileId: string;
+  onClose: () => void;
+  onCloseOthers: (id: string) => void;
+  onCloseAll: () => void;
 }
 
-/** Pick an icon component for a given file name */
-function getFileIcon(fileName: string) {
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  switch (ext) {
-    case 'json':
-      return <FileJson className="size-3.5 text-amber-400" />;
-    case 'ts':
-    case 'tsx':
-      return <Braces className="size-3.5 text-blue-400" />;
-    case 'js':
-    case 'jsx':
-      return <Braces className="size-3.5 text-yellow-400" />;
-    case 'css':
-    case 'scss':
-    case 'less':
-      return <Palette className="size-3.5 text-pink-400" />;
-    case 'html':
-    case 'htm':
-    case 'svg':
-      return <Layout className="size-3.5 text-orange-400" />;
-    case 'md':
-      return <FileText className="size-3.5 text-zinc-400" />;
-    case 'py':
-      return <Code2 className="size-3.5 text-green-400" />;
-    case 'sql':
-    case 'prisma':
-      return <Database className="size-3.5 text-cyan-400" />;
-    case 'sh':
-    case 'bash':
-    case 'zsh':
-    case 'dockerfile':
-      return <Terminal className="size-3.5 text-emerald-400" />;
-    case 'yaml':
-    case 'yml':
-    case 'toml':
-    case 'env':
-      return <Settings className="size-3.5 text-zinc-400" />;
-    default:
-      return <FileType className="size-3.5 text-zinc-500" />;
-  }
-}
+function TabContextMenu({ x, y, fileId, onClose, onCloseOthers, onCloseAll }: TabContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
 
-/** Get the dot color for a file type indicator */
-function getFileTypeDotColor(fileName: string): string {
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  switch (ext) {
-    case 'json': return 'bg-amber-400';
-    case 'ts':
-    case 'tsx': return 'bg-blue-400';
-    case 'js':
-    case 'jsx': return 'bg-yellow-400';
-    case 'css':
-    case 'scss':
-    case 'less': return 'bg-pink-400';
-    case 'html':
-    case 'htm':
-    case 'svg': return 'bg-orange-400';
-    case 'md': return 'bg-zinc-400';
-    case 'py': return 'bg-green-400';
-    case 'sql':
-    case 'prisma': return 'bg-cyan-400';
-    case 'sh':
-    case 'bash':
-    case 'zsh':
-    case 'dockerfile': return 'bg-emerald-400';
-    case 'yaml':
-    case 'yml':
-    case 'toml': return 'bg-zinc-400';
-    default: return 'bg-zinc-500';
-  }
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 min-w-[160px] rounded-md border border-zinc-700 bg-zinc-800 py-1 shadow-xl"
+      style={{ left: x, top: y }}
+    >
+      <button
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+        onClick={() => { onCloseOthers(fileId); onClose(); }}
+      >
+        Close Others
+      </button>
+      <button
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+        onClick={() => { onCloseAll(); onClose(); }}
+      >
+        Close All
+      </button>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
 // EditorTab
 // ---------------------------------------------------------------------------
 
-function EditorTab({
-  file,
-  isActive,
-  onClose,
-}: {
+const MAX_TAB_WIDTH = 160;
+const MIN_TAB_WIDTH = 80;
+
+interface EditorTabProps {
   file: ProjectFile;
   isActive: boolean;
+  onClick: () => void;
   onClose: () => void;
-}) {
-  const dotColor = getFileTypeDotColor(file.name);
+  onContextMenu: (e: React.MouseEvent, fileId: string) => void;
+}
+
+const EditorTab = React.memo(function EditorTab({
+  file,
+  isActive,
+  onClick,
+  onClose,
+  onContextMenu,
+}: EditorTabProps) {
+  const icon = useMemo(() => getFileIcon(file.name), [file.name]);
 
   return (
     <div
-      className={`group flex items-center gap-1.5 border-r border-zinc-800 px-3 py-1.5 text-xs font-medium transition-colors ${
+      role="tab"
+      aria-selected={isActive}
+      tabIndex={isActive ? 0 : -1}
+      onClick={onClick}
+      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); onClose(); } }}
+      onContextMenu={(e) => onContextMenu(e, file.id)}
+      className={`group flex shrink-0 items-center gap-1.5 border-r border-zinc-800 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer select-none ${
         isActive
-          ? 'bg-zinc-950 text-zinc-100 shadow-[inset_0_-2px_0_0_theme(colors.emerald.500)]'
-          : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-300'
+          ? 'bg-zinc-800 border-b-2 border-b-emerald-500 text-zinc-100'
+          : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
       }`}
+      style={{ minWidth: MIN_TAB_WIDTH, maxWidth: MAX_TAB_WIDTH }}
     >
-      {/* File type color dot */}
-      <span className={`size-2 shrink-0 rounded-full ${dotColor}`} />
-      <span className="max-w-[120px] truncate">{file.name}</span>
+      {/* File icon */}
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{file.name}</span>
       <button
         onClick={(e) => {
           e.stopPropagation();
           onClose();
         }}
-        className="ml-1 flex size-4 items-center justify-center rounded opacity-0 transition-opacity hover:bg-zinc-700 group-hover:opacity-100"
+        className="ml-auto flex size-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
         aria-label={`Close ${file.name}`}
       >
         <X className="size-3" />
       </button>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // EditorToolbar
@@ -254,7 +184,7 @@ function EditorToolbar({
   const language = getLanguageFromFileName(file.name);
   const lineCount = file.content.split('\n').length;
   const charCount = file.content.length;
-  const dotColor = getFileTypeDotColor(file.name);
+  const dotColor = getFileTypeColor(file.name);
 
   return (
     <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/60 px-3 py-1">
@@ -485,6 +415,8 @@ const BRACKET_PAIRS: Record<string, string> = {
 // CodeEditor (main export)
 // ---------------------------------------------------------------------------
 
+const MAX_OPEN_TABS = 10;
+
 export default function CodeEditor() {
   const currentFile = useFileState(s => s.currentFile);
   const setCurrentFile = useFileState(s => s.setCurrentFile);
@@ -493,12 +425,23 @@ export default function CodeEditor() {
   const setIsPreviewOpen = usePreviewState(s => s.setIsPreviewOpen);
   const setPreviewFiles = usePreviewState(s => s.setPreviewFiles);
 
-  // Local editing state
+  // Multi-tab state
+  const [openFileIds, setOpenFileIds] = useState<string[]>([]);
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string } | null>(null);
+
+  // Local editing state (keyed by activeFileId so each file has its own state)
   const [editContent, setEditContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Per-file dirty state tracking
+  const dirtyMapRef = useRef<Map<string, string>>(new Map()); // fileId -> unsaved content
+  const editMapRef = useRef<Map<string, string>>(new Map()); // fileId -> edit content
 
   // Editor preference state
   const [wordWrap, setWordWrap] = useState(true);
@@ -507,17 +450,79 @@ export default function CodeEditor() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const codeAreaRef = useRef<HTMLDivElement>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
 
-  // Sync local state when currentFile changes
-  // Use a ref to track previous file ID to avoid unnecessary resets
-  const prevFileIdRef = useRef<string | null>(null);
+  // ---- Resolve the actual file object for activeFileId ----
+  const filesMap = useMemo(() => {
+    const map = new Map<string, ProjectFile>();
+    for (const f of files) map.set(f.id, f);
+    return map;
+  }, [files]);
+
+  // The active file is determined by activeFileId, falling back to currentFile from store
+  const activeFile = useMemo(() => {
+    if (activeFileId) return filesMap.get(activeFileId) ?? null;
+    return currentFile;
+  }, [activeFileId, filesMap, currentFile]);
+
+  // ---- When currentFile changes from the store (e.g. FileExplorer click), add to open tabs ----
   useEffect(() => {
-    const fileId = currentFile?.id ?? null;
-    if (fileId !== prevFileIdRef.current) {
-      prevFileIdRef.current = fileId;
-      if (currentFile) {
-        setEditContent(currentFile.content);
-        setIsDirty(false);
+    if (currentFile) {
+      setOpenFileIds(prev => {
+        if (prev.includes(currentFile.id)) return prev;
+        // Limit to MAX_OPEN_TABS — remove the oldest (first) tab
+        const next = [...prev, currentFile.id];
+        if (next.length > MAX_OPEN_TABS) {
+          next.shift();
+        }
+        return next;
+      });
+      setActiveFileId(currentFile.id);
+    }
+  }, [currentFile]);
+
+  // ---- Remove deleted files from open tabs ----
+  useEffect(() => {
+    if (openFileIds.length === 0) return;
+    const currentIds = new Set(files.map(f => f.id));
+    const remaining = openFileIds.filter(id => currentIds.has(id));
+    if (remaining.length !== openFileIds.length) {
+      setOpenFileIds(remaining);
+      // If the active file was deleted, switch to the last remaining tab
+      if (activeFileId && !currentIds.has(activeFileId)) {
+        const newActive = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+        setActiveFileId(newActive);
+        // Also update the store so the rest of the app knows
+        if (newActive) {
+          const newFile = filesMap.get(newActive) ?? null;
+          setCurrentFile(newFile);
+        } else {
+          setCurrentFile(null);
+        }
+      }
+    }
+  }, [files, openFileIds, activeFileId, filesMap, setCurrentFile]);
+
+  // ---- Sync local editing state when activeFile changes ----
+  const prevActiveFileIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const fileId = activeFile?.id ?? null;
+    if (fileId !== prevActiveFileIdRef.current) {
+      // Save current edit state for the previous file
+      if (prevActiveFileIdRef.current && isDirty) {
+        dirtyMapRef.current.set(prevActiveFileIdRef.current, editContent);
+      }
+      if (prevActiveFileIdRef.current) {
+        editMapRef.current.set(prevActiveFileIdRef.current, editContent);
+      }
+
+      prevActiveFileIdRef.current = fileId;
+      if (activeFile) {
+        // Restore per-file edit state if available
+        const savedEdit = editMapRef.current.get(fileId);
+        const savedDirty = dirtyMapRef.current.get(fileId);
+        setEditContent(savedDirty ?? savedEdit ?? activeFile.content);
+        setIsDirty(!!savedDirty && savedDirty !== activeFile.content);
         setIsEditing(false);
       } else {
         setEditContent('');
@@ -525,7 +530,7 @@ export default function CodeEditor() {
         setIsEditing(false);
       }
     }
-  }, [currentFile]);
+  }, [activeFile]);
 
   // Focus textarea when entering edit mode
   useEffect(() => {
@@ -537,11 +542,11 @@ export default function CodeEditor() {
   // ---- Keyboard shortcuts: Ctrl/Cmd+S to save, Ctrl/Cmd+Shift+P for preview ----
 
   const handleSave = useCallback(async () => {
-    if (!currentFile || !isDirty) return;
+    if (!activeFile || !isDirty) return;
 
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/files/${currentFile.id}`, {
+      const res = await fetch(`/api/files/${activeFile.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: editContent }),
@@ -554,15 +559,17 @@ export default function CodeEditor() {
       const data = await res.json();
 
       // Update Zustand store
-      updateFile(currentFile.id, {
+      updateFile(activeFile.id, {
         content: editContent,
         updatedAt: data.file?.updatedAt ?? new Date().toISOString(),
       });
 
       setIsDirty(false);
+      // Clear dirty state for this file
+      dirtyMapRef.current.delete(activeFile.id);
 
       // If preview is open and this is a previewable file, update preview
-      const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
+      const ext = activeFile.name.split('.').pop()?.toLowerCase() ?? '';
       if (['html', 'htm', 'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx'].includes(ext)) {
         const { isPreviewOpen, previewFiles, setPreviewFiles } = useAppStore.getState();
         if (isPreviewOpen) {
@@ -575,7 +582,7 @@ export default function CodeEditor() {
 
       toast({
         title: 'File saved',
-        description: `${currentFile.name} saved successfully`,
+        description: `${activeFile.name} saved successfully`,
       });
     } catch (error) {
       console.error('Save error:', error);
@@ -587,7 +594,7 @@ export default function CodeEditor() {
     } finally {
       setIsSaving(false);
     }
-  }, [currentFile, isDirty, editContent, updateFile]);
+  }, [activeFile, isDirty, editContent, updateFile]);
 
   // ---- Check if current file is previewable (HTML/CSS/JS) ----
   // Pre-computed set for O(1) lookup instead of Array.includes()
@@ -600,7 +607,7 @@ export default function CodeEditor() {
   // ---- Handle opening preview with HTML/CSS/JS files from the project ----
 
   const handleOpenPreview = useCallback(() => {
-    if (!currentFile) return;
+    if (!activeFile) return;
 
     // Find all HTML, CSS, and JS files from the current project
     const htmlFiles = files.filter(f => {
@@ -616,42 +623,42 @@ export default function CodeEditor() {
       return ['js', 'jsx'].includes(ext) && !f.isFolder;
     });
 
-    // Use current file content if it matches a type, otherwise use found files
-    const ext = currentFile.name.split('.').pop()?.toLowerCase() ?? '';
+    // Use active file content if it matches a type, otherwise use found files
+    const ext = activeFile.name.split('.').pop()?.toLowerCase() ?? '';
 
     // Combine multiple CSS files into one, and multiple JS files into one
     let html = htmlFiles[0]?.content ?? '';
     let css = cssFiles.map(f => `/* ${f.name} */\n${f.content}`).join('\n\n');
     let js = jsFiles.map(f => `// ${f.name}\n${f.content}`).join('\n\n');
 
-    // If the current file is one of these types, use its latest content
+    // If the active file is one of these types, use its latest content
     if (['html', 'htm'].includes(ext)) {
-      html = isDirty ? editContent : currentFile.content;
+      html = isDirty ? editContent : activeFile.content;
     } else if (['css', 'scss', 'less'].includes(ext)) {
       // Replace the matching file's content in the combined CSS
-      css = isDirty ? editContent : currentFile.content;
+      css = isDirty ? editContent : activeFile.content;
       if (cssFiles.length > 1) {
         css = cssFiles
-          .filter(f => f.id !== currentFile.id)
+          .filter(f => f.id !== activeFile.id)
           .map(f => `/* ${f.name} */\n${f.content}`)
-          .concat([`/* ${currentFile.name} */\n${css}`])
+          .concat([`/* ${activeFile.name} */\n${css}`])
           .join('\n\n');
       }
     } else if (['js', 'jsx'].includes(ext)) {
       // Replace the matching file's content in the combined JS
-      js = isDirty ? editContent : currentFile.content;
+      js = isDirty ? editContent : activeFile.content;
       if (jsFiles.length > 1) {
         js = jsFiles
-          .filter(f => f.id !== currentFile.id)
+          .filter(f => f.id !== activeFile.id)
           .map(f => `// ${f.name}\n${f.content}`)
-          .concat([`// ${currentFile.name}\n${js}`])
+          .concat([`// ${activeFile.name}\n${js}`])
           .join('\n\n');
       }
     }
 
     setPreviewFiles({ html, css, js });
     setIsPreviewOpen(true);
-  }, [currentFile, files, isDirty, editContent, setPreviewFiles, setIsPreviewOpen]);
+  }, [activeFile, files, isDirty, editContent, setPreviewFiles, setIsPreviewOpen]);
 
   // Keyboard shortcut handler
   useEffect(() => {
@@ -659,18 +666,18 @@ export default function CodeEditor() {
       // Ctrl/Cmd + S to save
       if ((e.metaKey || e.ctrlKey) && e.key === 's' && !e.shiftKey) {
         e.preventDefault();
-        if (currentFile && isDirty) {
+        if (activeFile && isDirty) {
           handleSave();
         }
       }
       // Ctrl/Cmd + Shift + P to open preview
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
-        if (currentFile && isPreviewable(currentFile.name)) {
+        if (activeFile && isPreviewable(activeFile.name)) {
           handleOpenPreview();
           toast({
             title: 'Preview opened',
-            description: `${currentFile.name} opened in preview`,
+            description: `${activeFile.name} opened in preview`,
           });
         }
       }
@@ -678,7 +685,7 @@ export default function CodeEditor() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFile, isDirty, handleSave, isPreviewable, handleOpenPreview]);
+  }, [activeFile, isDirty, handleSave, isPreviewable, handleOpenPreview]);
 
   // ---- Handlers ----
 
@@ -689,9 +696,19 @@ export default function CodeEditor() {
   const handleContentChange = useCallback(
     (value: string) => {
       setEditContent(value);
-      setIsDirty(value !== (currentFile?.content ?? ''));
+      const isChanged = value !== (activeFile?.content ?? '');
+      setIsDirty(isChanged);
+      // Track dirty state per-file
+      if (activeFile) {
+        if (isChanged) {
+          dirtyMapRef.current.set(activeFile.id, value);
+        } else {
+          dirtyMapRef.current.delete(activeFile.id);
+        }
+        editMapRef.current.set(activeFile.id, value);
+      }
     },
-    [currentFile],
+    [activeFile],
   );
 
   // Tab indentation handling in textarea
@@ -704,7 +721,7 @@ export default function CodeEditor() {
       const end = textarea.selectionEnd;
       const newValue = editContent.substring(0, start) + '  ' + editContent.substring(end);
       setEditContent(newValue);
-      setIsDirty(newValue !== (currentFile?.content ?? ''));
+      setIsDirty(newValue !== (activeFile?.content ?? ''));
       // Set cursor position after the inserted tab
       requestAnimationFrame(() => {
         textarea.selectionStart = textarea.selectionEnd = start + 2;
@@ -733,7 +750,7 @@ export default function CodeEditor() {
       const newValue =
         editContent.substring(0, start) + e.key + selectedText + closingBracket + editContent.substring(end);
       setEditContent(newValue);
-      setIsDirty(newValue !== (currentFile?.content ?? ''));
+      setIsDirty(newValue !== (activeFile?.content ?? ''));
       // Place cursor between the brackets
       requestAnimationFrame(() => {
         textarea.selectionStart = textarea.selectionEnd = start + 1;
@@ -757,7 +774,7 @@ export default function CodeEditor() {
         const newValue =
           editContent.substring(0, start) + '\n' + indent + '  ' + '\n' + indent + editContent.substring(start);
         setEditContent(newValue);
-        setIsDirty(newValue !== (currentFile?.content ?? ''));
+        setIsDirty(newValue !== (activeFile?.content ?? ''));
         requestAnimationFrame(() => {
           textarea.selectionStart = textarea.selectionEnd = start + 1 + indent.length + 2;
         });
@@ -770,16 +787,16 @@ export default function CodeEditor() {
         e.preventDefault();
         const newValue = editContent.substring(0, start) + '\n' + indent + editContent.substring(start);
         setEditContent(newValue);
-        setIsDirty(newValue !== (currentFile?.content ?? ''));
+        setIsDirty(newValue !== (activeFile?.content ?? ''));
         requestAnimationFrame(() => {
           textarea.selectionStart = textarea.selectionEnd = start + 1 + indent.length;
         });
       }
     }
-  }, [editContent, currentFile]);
+  }, [editContent, activeFile]);
 
   const handleCopy = useCallback(async () => {
-    const content = isEditing ? editContent : (currentFile?.content ?? '');
+    const content = isEditing ? editContent : (activeFile?.content ?? '');
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
@@ -787,162 +804,262 @@ export default function CodeEditor() {
     } catch {
       // clipboard API not available
     }
-  }, [editContent, currentFile, isEditing]);
+  }, [editContent, activeFile, isEditing]);
 
-  const handleCloseTab = useCallback(() => {
+  const handleCloseTab = useCallback((fileId: string) => {
+    setOpenFileIds(prev => {
+      const idx = prev.indexOf(fileId);
+      if (idx === -1) return prev;
+      const next = prev.filter(id => id !== fileId);
+
+      // Clean up per-file state
+      dirtyMapRef.current.delete(fileId);
+      editMapRef.current.delete(fileId);
+
+      // If closing the active tab, switch to the previous or next tab
+      if (fileId === activeFileId) {
+        let newActiveId: string | null = null;
+        if (next.length > 0) {
+          // Prefer the tab to the left, otherwise the one to the right
+          newActiveId = idx > 0 ? next[idx - 1] : next[0];
+        }
+        setActiveFileId(newActiveId);
+        const newFile = newActiveId ? filesMap.get(newActiveId) ?? null : null;
+        setCurrentFile(newFile);
+      }
+
+      return next;
+    });
+  }, [activeFileId, filesMap, setCurrentFile]);
+
+  const handleCloseOthers = useCallback((keepId: string) => {
+    setOpenFileIds([keepId]);
+    setActiveFileId(keepId);
+    const file = filesMap.get(keepId) ?? null;
+    setCurrentFile(file);
+    // Clean up dirty state for closed tabs
+    for (const [id] of dirtyMapRef.current) {
+      if (id !== keepId) dirtyMapRef.current.delete(id);
+    }
+    for (const [id] of editMapRef.current) {
+      if (id !== keepId) editMapRef.current.delete(id);
+    }
+  }, [filesMap, setCurrentFile]);
+
+  const handleCloseAll = useCallback(() => {
+    setOpenFileIds([]);
+    setActiveFileId(null);
     setCurrentFile(null);
+    dirtyMapRef.current.clear();
+    editMapRef.current.clear();
   }, [setCurrentFile]);
+
+  const handleTabClick = useCallback((fileId: string) => {
+    setActiveFileId(fileId);
+    const file = filesMap.get(fileId) ?? null;
+    setCurrentFile(file);
+  }, [filesMap, setCurrentFile]);
+
+  const handleTabContextMenu = useCallback((e: React.MouseEvent, fileId: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, fileId });
+  }, []);
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleDismiss() { setContextMenu(null); }
+    document.addEventListener('click', handleDismiss);
+    return () => document.removeEventListener('click', handleDismiss);
+  }, [contextMenu]);
 
   // ---- Compute derived values (must be before any conditional returns) ----
 
-  const language = useMemo(() => currentFile ? getLanguageFromFileName(currentFile.name) : '', [currentFile]);
-  const displayContent = currentFile ? (isEditing ? editContent : currentFile.content) : '';
-  const canPreview = currentFile ? isPreviewable(currentFile.name) : false;
+  // Build the list of open file objects (resolved from IDs)
+  const openFileObjects = useMemo(() => {
+    return openFileIds
+      .map(id => filesMap.get(id))
+      .filter((f): f is ProjectFile => f !== undefined);
+  }, [openFileIds, filesMap]);
+
+  const language = useMemo(() => activeFile ? getLanguageFromFileName(activeFile.name) : '', [activeFile]);
+  const displayContent = activeFile ? (isEditing ? editContent : activeFile.content) : '';
+  const canPreview = activeFile ? isPreviewable(activeFile.name) : false;
 
   // ---- Render ----
-
-  // No file open
-  if (!currentFile) {
-    return (
-      <div className="flex h-full flex-col bg-zinc-950">
-        {/* Empty tab bar */}
-        <div className="flex h-[34px] items-center border-b border-zinc-800 bg-zinc-900 px-3">
-          <span className="text-xs text-zinc-600">No open files</span>
-        </div>
-        <EmptyState />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full flex-col bg-zinc-950">
       {/* Tab bar */}
-      <div className="flex h-[34px] shrink-0 items-stretch overflow-x-auto border-b border-zinc-800 bg-zinc-900">
-        <EditorTab
-          file={currentFile}
-          isActive={true}
-          onClose={handleCloseTab}
-        />
-      </div>
-
-      {/* Toolbar */}
-      <EditorToolbar
-        file={currentFile}
-        isEditing={isEditing}
-        isSaving={isSaving}
-        isDirty={isDirty}
-        onToggleEdit={handleToggleEdit}
-        onSave={handleSave}
-        onCopy={handleCopy}
-        copied={copied}
-        onPreview={handleOpenPreview}
-        isPreviewable={canPreview}
-        wordWrap={wordWrap}
-        onToggleWordWrap={() => setWordWrap((v) => !v)}
-        fontSize={fontSize}
-        onFontSizeChange={setFontSize}
-        showLineNumbers={showLineNumbers}
-        onToggleLineNumbers={() => setShowLineNumbers((v) => !v)}
-      />
-
-      {/* Code area — takes all remaining space */}
       <div
-        ref={codeAreaRef}
-        className="relative min-h-0 flex-1 overflow-auto font-mono text-sm"
+        ref={tabBarRef}
+        data-tab-bar-scroll
+        className="flex h-[34px] shrink-0 items-stretch overflow-x-auto border-b border-zinc-800 bg-zinc-900"
         style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#3f3f46 transparent',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
         }}
       >
-        <style>{`
-          [data-code-area]::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-          }
-          [data-code-area]::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          [data-code-area]::-webkit-scrollbar-thumb {
-            background: #3f3f46;
-            border-radius: 4px;
-          }
-          [data-code-area]::-webkit-scrollbar-thumb:hover {
-            background: #52525b;
-          }
-          [data-code-area]::-webkit-scrollbar-corner {
-            background: transparent;
-          }
-        `}</style>
-
-        {isEditing ? (
-          /* ---- Edit mode: textarea ---- */
-          <div className="relative flex" data-code-area>
-            {/* Line numbers gutter */}
-            {showLineNumbers && (
-              <div
-                className="sticky left-0 z-10 select-none bg-zinc-950/90 text-right font-mono leading-[1.6] text-zinc-600"
-                style={{ minWidth: '3.5em', padding: '1rem 0.75rem 1rem 0', fontSize: `${fontSize}px` }}
-                aria-hidden="true"
-              >
-                {editContent.split('\n').map((_, i) => (
-                  <div key={i}>{i + 1}</div>
-                ))}
-              </div>
-            )}
-
-            {/* Textarea */}
-            <textarea
-              ref={textareaRef}
-              value={editContent}
-              onChange={(e) => handleContentChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="flex-1 resize-none bg-transparent p-4 pl-2 font-mono leading-[1.6] text-zinc-100 outline-none placeholder-zinc-600"
-              style={{
-                tabSize: 2,
-                fontSize: `${fontSize}px`,
-                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-                overflowWrap: wordWrap ? 'break-word' : 'normal',
-              }}
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              placeholder="Start typing..."
-            />
+        {openFileObjects.length === 0 ? (
+          <div className="flex items-center px-3">
+            <span className="text-xs text-zinc-600">No open files</span>
           </div>
         ) : (
-          /* ---- View mode: syntax highlighted ---- */
-          <div data-code-area>
-            <SyntaxHighlighter
-              language={language}
-              style={vscDarkPlus}
-              showLineNumbers={showLineNumbers}
-              lineNumberStyle={{
-                color: '#52525b',
-                minWidth: '3.5em',
-                paddingRight: '1em',
-              }}
-              customStyle={{
-                margin: 0,
-                padding: '1rem',
-                background: 'transparent',
-                fontSize: `${fontSize}px`,
-                lineHeight: '1.6',
-              }}
-              wrapLines={wordWrap}
-              wrapLongLines={wordWrap}
-              codeTagProps={{
-                style: {
-                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-                  whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-                },
-              }}
-            >
-              {displayContent}
-            </SyntaxHighlighter>
-          </div>
+          openFileObjects.map(file => (
+            <EditorTab
+              key={file.id}
+              file={file}
+              isActive={file.id === activeFileId}
+              onClick={() => handleTabClick(file.id)}
+              onClose={() => handleCloseTab(file.id)}
+              onContextMenu={handleTabContextMenu}
+            />
+          ))
         )}
       </div>
+
+      {/* Hide scrollbar for tab bar */}
+      <style>{`
+        [data-tab-bar-scroll]::-webkit-scrollbar { display: none; }
+      `}</style>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <TabContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          fileId={contextMenu.fileId}
+          onClose={() => setContextMenu(null)}
+          onCloseOthers={handleCloseOthers}
+          onCloseAll={handleCloseAll}
+        />
+      )}
+
+      {/* No file open — show placeholder */}
+      {!activeFile ? (
+        <EmptyState />
+      ) : (
+        <>
+          {/* Toolbar */}
+          <EditorToolbar
+            file={activeFile}
+            isEditing={isEditing}
+            isSaving={isSaving}
+            isDirty={isDirty}
+            onToggleEdit={handleToggleEdit}
+            onSave={handleSave}
+            onCopy={handleCopy}
+            copied={copied}
+            onPreview={handleOpenPreview}
+            isPreviewable={canPreview}
+            wordWrap={wordWrap}
+            onToggleWordWrap={() => setWordWrap((v) => !v)}
+            fontSize={fontSize}
+            onFontSizeChange={setFontSize}
+            showLineNumbers={showLineNumbers}
+            onToggleLineNumbers={() => setShowLineNumbers((v) => !v)}
+          />
+
+          {/* Code area — takes all remaining space */}
+          <div
+            ref={codeAreaRef}
+            className="relative min-h-0 flex-1 overflow-auto font-mono text-sm"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#3f3f46 transparent',
+            }}
+          >
+            <style>{`
+              [data-code-area]::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+              }
+              [data-code-area]::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              [data-code-area]::-webkit-scrollbar-thumb {
+                background: #3f3f46;
+                border-radius: 4px;
+              }
+              [data-code-area]::-webkit-scrollbar-thumb:hover {
+                background: #52525b;
+              }
+              [data-code-area]::-webkit-scrollbar-corner {
+                background: transparent;
+              }
+            `}</style>
+
+            {isEditing ? (
+              /* ---- Edit mode: textarea ---- */
+              <div className="relative flex" data-code-area>
+                {/* Line numbers gutter */}
+                {showLineNumbers && (
+                  <div
+                    className="sticky left-0 z-10 select-none bg-zinc-950/90 text-right font-mono leading-[1.6] text-zinc-600"
+                    style={{ minWidth: '3.5em', padding: '1rem 0.75rem 1rem 0', fontSize: `${fontSize}px` }}
+                    aria-hidden="true"
+                  >
+                    {editContent.split('\n').map((_, i) => (
+                      <div key={i}>{i + 1}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Textarea */}
+                <textarea
+                  ref={textareaRef}
+                  value={editContent}
+                  onChange={(e) => handleContentChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="flex-1 resize-none bg-transparent p-4 pl-2 font-mono leading-[1.6] text-zinc-100 outline-none placeholder-zinc-600"
+                  style={{
+                    tabSize: 2,
+                    fontSize: `${fontSize}px`,
+                    whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                    overflowWrap: wordWrap ? 'break-word' : 'normal',
+                  }}
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  placeholder="Start typing..."
+                />
+              </div>
+            ) : (
+              /* ---- View mode: syntax highlighted ---- */
+              <div data-code-area>
+                <SyntaxHighlighter
+                  language={language}
+                  style={vscDarkPlus}
+                  showLineNumbers={showLineNumbers}
+                  lineNumberStyle={{
+                    color: '#52525b',
+                    minWidth: '3.5em',
+                    paddingRight: '1em',
+                  }}
+                  customStyle={{
+                    margin: 0,
+                    padding: '1rem',
+                    background: 'transparent',
+                    fontSize: `${fontSize}px`,
+                    lineHeight: '1.6',
+                  }}
+                  wrapLines={wordWrap}
+                  wrapLongLines={wordWrap}
+                  codeTagProps={{
+                    style: {
+                      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+                      whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                    },
+                  }}
+                >
+                  {displayContent}
+                </SyntaxHighlighter>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

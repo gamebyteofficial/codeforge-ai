@@ -73,7 +73,7 @@ export default function TopBar() {
       }
     };
     fetchProjects();
-  }, [setProjects, setCurrentProject, currentProject]);
+  }, []);
 
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;

@@ -6,8 +6,6 @@ import {
   File,
   Folder,
   FolderOpen,
-  FileCode,
-  FileJson,
   Plus,
   FolderPlus,
   RefreshCw,
@@ -15,11 +13,12 @@ import {
   ChevronDown,
   Trash2,
   Pencil,
-  FileText,
   Loader2,
   FolderSearch,
+  Search,
+  X,
 } from 'lucide-react';
-import { useAppStore, type ProjectFile } from '@/store';
+import { type ProjectFile } from '@/store';
 import { useFileState, useProjectState } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -35,6 +34,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getFileIcon, getLanguageFromFileName } from '@/lib/file-icons';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,35 +59,6 @@ interface TreeNode {
 }
 
 type CreationMode = 'file' | 'folder' | null;
-
-// ---------------------------------------------------------------------------
-// File icon mapping
-// ---------------------------------------------------------------------------
-
-function getFileIcon(filename: string) {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return <FileCode className="size-3.5 shrink-0 text-blue-400" />;
-    case 'js':
-    case 'jsx':
-      return <FileCode className="size-3.5 shrink-0 text-yellow-400" />;
-    case 'py':
-      return <FileCode className="size-3.5 shrink-0 text-green-400" />;
-    case 'html':
-      return <FileCode className="size-3.5 shrink-0 text-orange-400" />;
-    case 'css':
-      return <FileCode className="size-3.5 shrink-0 text-purple-400" />;
-    case 'json':
-      return <FileJson className="size-3.5 shrink-0 text-zinc-400" />;
-    case 'md':
-      return <FileText className="size-3.5 shrink-0 text-zinc-400" />;
-    default:
-      return <File className="size-3.5 shrink-0 text-zinc-500" />;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Build tree from flat file list
@@ -147,21 +128,31 @@ function TreeNodeItem({
   depth,
   currentFile,
   expandedFolders,
+  renamingFileId,
+  renameValue,
   onToggleFolder,
   onSelectFile,
   onRename,
   onDelete,
   onCreateInFolder,
+  onRenameValueChange,
+  onRenameSubmit,
+  onRenameCancel,
 }: {
   node: TreeNode;
   depth: number;
   currentFile: ProjectFile | null;
   expandedFolders: Set<string>;
+  renamingFileId: string | null;
+  renameValue: string;
   onToggleFolder: (path: string) => void;
   onSelectFile: (file: ProjectFile) => void;
   onRename: (file: ProjectFile) => void;
   onDelete: (file: ProjectFile) => void;
   onCreateInFolder: (parentPath: string, mode: 'file' | 'folder') => void;
+  onRenameValueChange: (value: string) => void;
+  onRenameSubmit: () => void;
+  onRenameCancel: () => void;
 }) {
   const isExpanded = expandedFolders.has(node.path);
   const isSelected = !node.isFolder && currentFile?.path === node.path;
@@ -195,23 +186,64 @@ function TreeNodeItem({
     <span className="w-3.5 shrink-0" />
   );
 
+  const isRenaming = node.file && renamingFileId === node.file.id;
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming) {
+      requestAnimationFrame(() => renameInputRef.current?.focus());
+    }
+  }, [isRenaming]);
+
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <button
-            onClick={handleClick}
-            className={`group flex w-full items-center gap-1 py-1 pr-2 text-left text-xs transition-colors ${
-              isSelected
-                ? 'bg-emerald-500/20 text-emerald-100'
-                : 'text-zinc-300 hover:bg-zinc-800/70 hover:text-zinc-100'
-            }`}
-            style={{ paddingLeft: `${paddingLeft}px` }}
-          >
-            {chevron}
-            {icon}
-            <span className="truncate">{node.name}</span>
-          </button>
+          {isRenaming ? (
+            <div
+              className="flex w-full items-center gap-1 py-1 pr-2"
+              style={{ paddingLeft: `${paddingLeft}px` }}
+            >
+              {chevron}
+              {icon}
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => onRenameValueChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onRenameSubmit();
+                  } else if (e.key === 'Escape') {
+                    onRenameCancel();
+                  }
+                }}
+                onBlur={() => {
+                  if (renameValue.trim()) {
+                    onRenameSubmit();
+                  } else {
+                    onRenameCancel();
+                  }
+                }}
+                className="min-w-0 flex-1 rounded border border-emerald-500/40 bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-500/70"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          ) : (
+            <button
+              onClick={handleClick}
+              className={`group flex w-full items-center gap-1 py-1 pr-2 text-left text-xs transition-colors ${
+                isSelected
+                  ? 'bg-emerald-500/20 text-emerald-100'
+                  : 'text-zinc-300 hover:bg-zinc-800/70 hover:text-zinc-100'
+              }`}
+              style={{ paddingLeft: `${paddingLeft}px` }}
+            >
+              {chevron}
+              {icon}
+              <span className="truncate">{node.name}</span>
+            </button>
+          )}
         </ContextMenuTrigger>
         <ContextMenuContent className="border-zinc-700 bg-zinc-800 text-zinc-200">
           {node.isFolder && (
@@ -281,11 +313,16 @@ function TreeNodeItem({
                 depth={depth + 1}
                 currentFile={currentFile}
                 expandedFolders={expandedFolders}
+                renamingFileId={renamingFileId}
+                renameValue={renameValue}
                 onToggleFolder={onToggleFolder}
                 onSelectFile={onSelectFile}
                 onRename={onRename}
                 onDelete={onDelete}
                 onCreateInFolder={onCreateInFolder}
+                onRenameValueChange={onRenameValueChange}
+                onRenameSubmit={onRenameSubmit}
+                onRenameCancel={onRenameCancel}
               />
             ))}
           </motion.div>
@@ -408,10 +445,25 @@ export default function FileExplorer() {
   const [creationParentPath, setCreationParentPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Build tree from flat file list
-  const tree = useMemo(() => buildTree(files), [files]);
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ fileId: string; fileName: string } | null>(null);
+
+  // File search state
+  const [fileSearch, setFileSearch] = useState('');
+
+  // Inline rename state
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  // Filter files by search
+  const filteredFiles = useMemo(
+    () => fileSearch ? files.filter(f => f.name.toLowerCase().includes(fileSearch.toLowerCase())) : files,
+    [files, fileSearch],
+  );
+
+  // Build tree from filtered file list
+  const tree = useMemo(() => buildTree(filteredFiles), [filteredFiles]);
 
   // -------------------------------------------------------------------------
   // Fetch files
@@ -500,20 +552,8 @@ export default function FileExplorer() {
         ? `${creationParentPath}/${name}`
         : name;
 
-      // Determine language from extension
-      const ext = name.split('.').pop()?.toLowerCase() || '';
-      const langMap: Record<string, string> = {
-        ts: 'typescript',
-        tsx: 'typescript',
-        js: 'javascript',
-        jsx: 'javascript',
-        py: 'python',
-        html: 'html',
-        css: 'css',
-        json: 'json',
-        md: 'markdown',
-      };
-      const language = isFolder ? '' : langMap[ext] || 'text';
+      // Determine language from extension (using shared utility)
+      const language = isFolder ? '' : getLanguageFromFileName(name);
 
       setIsCreating(true);
       try {
@@ -577,11 +617,18 @@ export default function FileExplorer() {
   // -------------------------------------------------------------------------
 
   const handleDelete = useCallback(
-    async (file: ProjectFile) => {
+    (file: ProjectFile) => {
+      setDeleteConfirm({ fileId: file.id, fileName: file.name });
+    },
+    [],
+  );
+
+  const performDelete = useCallback(
+    async (fileId: string) => {
       try {
-        const res = await fetch(`/api/files/${file.id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Failed to delete');
-        removeFile(file.id);
+        removeFile(fileId);
       } catch (error) {
         console.error('Failed to delete file:', error);
       }
@@ -594,29 +641,62 @@ export default function FileExplorer() {
   // -------------------------------------------------------------------------
 
   const handleRename = useCallback(
-    async (file: ProjectFile) => {
-      const newName = prompt('Enter new name:', file.name);
-      if (!newName || newName === file.name) return;
+    (file: ProjectFile) => {
+      setRenamingFileId(file.id);
+      setRenameValue(file.name);
+    },
+    [],
+  );
+
+  const handleRenameSubmit = useCallback(
+    async () => {
+      if (!renamingFileId) return;
+      const trimmed = renameValue.trim();
+      if (!trimmed) {
+        setRenamingFileId(null);
+        setRenameValue('');
+        return;
+      }
+
+      // Find the file being renamed
+      const file = files.find(f => f.id === renamingFileId);
+      if (!file || trimmed === file.name) {
+        setRenamingFileId(null);
+        setRenameValue('');
+        return;
+      }
 
       const pathParts = file.path.split('/');
-      pathParts[pathParts.length - 1] = newName;
+      pathParts[pathParts.length - 1] = trimmed;
       const newPath = pathParts.join('/');
 
       try {
         const res = await fetch(`/api/files/${file.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newName, path: newPath }),
+          body: JSON.stringify({ name: trimmed, path: newPath }),
         });
         if (!res.ok) throw new Error('Failed to rename');
         const data = await res.json();
         updateFile(file.id, data.file);
       } catch (error) {
         console.error('Failed to rename file:', error);
+      } finally {
+        setRenamingFileId(null);
+        setRenameValue('');
       }
     },
-    [updateFile],
+    [renamingFileId, renameValue, files, updateFile],
   );
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingFileId(null);
+    setRenameValue('');
+  }, []);
+
+  const handleRenameValueChange = useCallback((value: string) => {
+    setRenameValue(value);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Create in folder (from context menu)
@@ -633,7 +713,7 @@ export default function FileExplorer() {
   // Render
   // -------------------------------------------------------------------------
 
-  const isEmpty = files.length === 0 && !creationMode;
+  const isEmpty = filteredFiles.length === 0 && !creationMode;
 
   return (
     <div className="flex h-full flex-col bg-zinc-900/95 text-zinc-100">
@@ -699,6 +779,27 @@ export default function FileExplorer() {
         </div>
       </div>
 
+      {/* File Search */}
+      {files.length > 4 && (
+        <div className="px-2 pb-1">
+          <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1">
+            <Search className="size-3 text-zinc-500" />
+            <input
+              value={fileSearch}
+              onChange={(e) => setFileSearch(e.target.value)}
+              placeholder="Search files..."
+              className="flex-1 bg-transparent text-xs text-zinc-300 placeholder:text-zinc-600 outline-none"
+              onKeyDown={(e) => { if (e.key === 'Escape') setFileSearch(''); }}
+            />
+            {fileSearch && (
+              <button onClick={() => setFileSearch('')} className="text-zinc-500 hover:text-zinc-300">
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* File Tree */}
       <ScrollArea className="flex-1">
         <div className="py-1">
@@ -733,11 +834,16 @@ export default function FileExplorer() {
                   depth={0}
                   currentFile={currentFile}
                   expandedFolders={expandedFolders}
+                  renamingFileId={renamingFileId}
+                  renameValue={renameValue}
                   onToggleFolder={handleToggleFolder}
                   onSelectFile={handleSelectFile}
                   onRename={handleRename}
                   onDelete={handleDelete}
                   onCreateInFolder={handleCreateInFolder}
+                  onRenameValueChange={handleRenameValueChange}
+                  onRenameSubmit={handleRenameSubmit}
+                  onRenameCancel={handleRenameCancel}
                 />
               ))}
 
@@ -778,6 +884,30 @@ export default function FileExplorer() {
           No project selected
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent className="border-zinc-700 bg-zinc-900">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-zinc-100">Delete File?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400">
+              Are you sure you want to delete <span className="font-medium text-zinc-200">{deleteConfirm?.fileName}</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-zinc-700 bg-zinc-800 text-zinc-300">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-500"
+              onClick={() => {
+                if (deleteConfirm) performDelete(deleteConfirm.fileId);
+                setDeleteConfirm(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

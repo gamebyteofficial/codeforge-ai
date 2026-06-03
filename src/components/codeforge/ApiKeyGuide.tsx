@@ -13,20 +13,9 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ProviderKey } from '@/lib/providers';
 
 // ─── Provider Guide Data ─────────────────────────────────────────────────────
-
-type ProviderKey =
-  | 'openai'
-  | 'anthropic'
-  | 'gemini'
-  | 'qwen'
-  | 'deepseek'
-  | 'mistral'
-  | 'openrouter'
-  | 'opencode'
-  | 'groq'
-  | 'together';
 
 interface ProviderGuide {
   name: string;
