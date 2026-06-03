@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ tasks });
   } catch (error) {
-    console.error('Failed to fetch tasks:', error);
+    logger.error('Failed to fetch tasks:', error);
     return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
   }
 }
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
-    console.error('Failed to create task:', error);
+    logger.error('Failed to create task:', error);
     return NextResponse.json({ error: 'Failed to create task' }, { status: 500 });
   }
 }

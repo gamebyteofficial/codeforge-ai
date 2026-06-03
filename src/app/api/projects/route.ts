@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET() {
@@ -12,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ projects });
   } catch (error) {
     // Database unavailable (e.g., Vercel serverless with SQLite)
-    console.warn('Projects GET: Database unavailable, returning empty projects');
+    logger.warn('Projects GET: Database unavailable, returning empty projects');
     return NextResponse.json({ projects: [] });
   }
 }
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ project }, { status: 201 });
     } catch (dbError) {
       // Database unavailable — return a fake project for client-side use
-      console.warn('Projects POST: Database unavailable, returning client-side project');
+      logger.warn('Projects POST: Database unavailable, returning client-side project');
       const fakeProject = {
         id: crypto.randomUUID(),
         name,
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ project: fakeProject }, { status: 201 });
     }
   } catch (error) {
-    console.error('Failed to create project:', error);
+    logger.error('Failed to create project:', error);
     return NextResponse.json({ error: 'Failed to create project' }, { status: 500 });
   }
 }

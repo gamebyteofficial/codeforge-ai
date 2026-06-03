@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain,
@@ -118,7 +118,7 @@ function EmptyState() {
 // Memory Entry
 // ---------------------------------------------------------------------------
 
-function MemoryEntry({
+const MemoryEntry = React.memo(function MemoryEntry({
   memory,
   onDelete,
   isDeleting,
@@ -220,13 +220,13 @@ function MemoryEntry({
       </div>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Category Group
 // ---------------------------------------------------------------------------
 
-function CategoryGroup({
+const CategoryGroup = React.memo(function CategoryGroup({
   category,
   memories,
   onDelete,
@@ -287,7 +287,7 @@ function CategoryGroup({
       </AnimatePresence>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Add Memory Dialog

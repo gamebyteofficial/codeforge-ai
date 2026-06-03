@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, lazy, Suspense, useState, useCallback, useRef, useMemo } from 'react';
-import ChatPanel from '@/components/codeforge/ChatPanel';
-import CodeEditor from '@/components/codeforge/CodeEditor';
+// Lazy loaded — these import react-syntax-highlighter and react-markdown (heaviest deps)
+const ChatPanel = lazy(() => import('@/components/codeforge/ChatPanel'));
+const CodeEditor = lazy(() => import('@/components/codeforge/CodeEditor'));
 import FileExplorer from '@/components/codeforge/FileExplorer';
 import TopBar from '@/components/codeforge/TopBar';
 import SettingsModal from '@/components/codeforge/SettingsModal';
@@ -238,37 +239,51 @@ export default function Home() {
     const ensureProject = async () => {
       try {
         // Check if there's already a current project
-        const { currentProject, setCurrentProject } = useAppStore.getState();
-        if (currentProject) return;
+        const { currentProject, setCurrentProject, setProjects, setAreProjectsLoaded } = useAppStore.getState();
+        if (currentProject) {
+          // Mark projects as loaded even if we skip fetching
+          setAreProjectsLoaded(true);
+          return;
+        }
 
         // Try to fetch existing projects
         const res = await fetch('/api/projects');
         if (res.ok) {
           const data = await res.json();
+          // Store all fetched projects in the Zustand store
+          setProjects(data.projects ?? []);
           if (data.projects && data.projects.length > 0) {
             // Use the first existing project
             setCurrentProject(data.projects[0]);
-            return;
+          } else {
+            // No projects exist — create a default one
+            const createRes = await fetch('/api/projects', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: 'My Project',
+                description: 'Default project for Waziros AI',
+                language: 'typescript',
+              }),
+            });
+
+            if (createRes.ok) {
+              const createData = await createRes.json();
+              setCurrentProject(createData.project);
+              // Add the newly created project to the store
+              setProjects([createData.project]);
+            }
           }
-        }
-
-        // No projects exist — create a default one
-        const createRes = await fetch('/api/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: 'My Project',
-            description: 'Default project for Waziros AI',
-            language: 'typescript',
-          }),
-        });
-
-        if (createRes.ok) {
-          const createData = await createRes.json();
-          setCurrentProject(createData.project);
+          // Mark projects as loaded so TopBar doesn't fetch again
+          setAreProjectsLoaded(true);
+        } else {
+          // Even on fetch failure, mark as loaded to prevent infinite retries
+          setAreProjectsLoaded(true);
         }
       } catch (error) {
         console.error('Failed to ensure default project:', error);
+        // Mark as loaded even on error to prevent infinite retries
+        useAppStore.getState().setAreProjectsLoaded(true);
       }
     };
     ensureProject();
@@ -314,7 +329,7 @@ export default function Home() {
               <ResizablePanel defaultSize={28} minSize={18} maxSize={45}>
                 <div className="flex h-full">
                   {/* Icon strip */}
-                  <div className="flex w-10 shrink-0 flex-col items-center gap-0.5 border-r border-zinc-800 bg-zinc-900 py-2">
+                  <div role="tablist" className="flex w-10 shrink-0 flex-col items-center gap-0.5 border-r border-zinc-800 bg-zinc-900 py-2">
                     {SIDEBAR_TABS.map((tab) => {
                       const Icon = tab.icon;
                       const isActive = sidebarTab === tab.value;
@@ -322,6 +337,9 @@ export default function Home() {
                         <Tooltip key={tab.value}>
                           <TooltipTrigger asChild>
                             <button
+                              role="tab"
+                              aria-selected={isActive}
+                              aria-label={tab.label}
                               onClick={() => setSidebarTab(tab.value)}
                               onMouseEnter={() => handleTabHover(tab.value)}
                               className={`flex size-8 items-center justify-center rounded-md transition-colors ${
@@ -394,7 +412,9 @@ export default function Home() {
                   {/* Chat Panel */}
                   <ResizablePanel defaultSize={40} minSize={25} maxSize={60}>
                     <PanelErrorBoundary name="Chat">
-                      <ChatPanel />
+                      <Suspense fallback={<PanelSkeleton />}>
+                        <ChatPanel />
+                      </Suspense>
                     </PanelErrorBoundary>
                   </ResizablePanel>
                   <ResizableHandle className="bg-zinc-800 hover:bg-emerald-500/30 transition-all duration-200 w-px" />
@@ -427,7 +447,9 @@ export default function Home() {
                       )}
                       <div className="flex-1 min-h-0">
                         <PanelErrorBoundary name="Editor">
-                          <CodeEditor />
+                          <Suspense fallback={<PanelSkeleton />}>
+                            <CodeEditor />
+                          </Suspense>
                         </PanelErrorBoundary>
                       </div>
                     </div>
@@ -471,6 +493,7 @@ export default function Home() {
         <div className="flex items-center gap-3">
           {/* Terminal toggle */}
           <button
+            aria-label="Toggle terminal"
             onClick={() => setIsBottomPanelOpen(!isBottomPanelOpen)}
             className="flex items-center gap-1 text-[10px] text-zinc-500 transition-colors hover:text-zinc-300"
           >
@@ -488,6 +511,7 @@ export default function Home() {
 
           {/* Preview toggle */}
           <button
+            aria-label="Toggle preview"
             onClick={() => setIsPreviewOpen(!isPreviewOpen)}
             className={`flex items-center gap-1 text-[10px] transition-colors ${
               isPreviewOpen ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
@@ -516,7 +540,7 @@ export default function Home() {
 
           {/* Project info */}
           <span className="text-[10px] text-zinc-600">
-            Waziros AI v2.0
+            Waziros AI v3.0
           </span>
 
           {/* Model info */}
@@ -545,6 +569,7 @@ export default function Home() {
               <span className="flex items-center gap-1.5 text-[10px] text-zinc-600 cursor-default">
                 <Wifi className="size-3" />
                 <span className={`size-1.5 rounded-full ${latencyColor} ${latencyStatus === 'good' ? 'animate-pulse' : ''}`} />
+                <span className="sr-only">{latencyStatus === 'good' ? 'Connection good' : latencyStatus === 'moderate' ? 'Connection slow' : 'Connection issues'}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="text-xs">
@@ -571,6 +596,7 @@ export default function Home() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                aria-label="Focus chat input"
                 onClick={() => {
                   const textarea = document.querySelector('textarea[placeholder="Ask Waziros AI..."]') as HTMLTextAreaElement;
                   textarea?.focus();
@@ -597,6 +623,9 @@ export default function Home() {
           onClick={() => setShowShortcuts(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Keyboard shortcuts"
             className="mx-4 max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >

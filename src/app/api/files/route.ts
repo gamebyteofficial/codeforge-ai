@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { detectLanguage } from '@/lib/language-utils';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
@@ -12,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ files });
   } catch (error) {
-    console.error('Failed to fetch files:', error);
+    logger.error('Failed to fetch files:', error);
     return NextResponse.json({ error: 'Failed to fetch files' }, { status: 500 });
   }
 }
@@ -47,20 +49,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ file }, { status: 201 });
   } catch (error) {
-    console.error('Failed to create file:', error);
+    logger.error('Failed to create file:', error);
     return NextResponse.json({ error: 'Failed to create file' }, { status: 500 });
   }
-}
-
-function detectLanguage(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const langMap: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-    py: 'python', html: 'html', css: 'css', json: 'json', yaml: 'yaml',
-    yml: 'yaml', md: 'markdown', rs: 'rust', go: 'go', java: 'java',
-    cpp: 'cpp', c: 'c', cs: 'csharp', php: 'php', rb: 'ruby',
-    swift: 'swift', kt: 'kotlin', dart: 'dart', sql: 'sql',
-    sh: 'bash', bash: 'bash', xml: 'xml', svg: 'xml',
-  };
-  return langMap[ext] || 'text';
 }

@@ -37,15 +37,8 @@ import {
 import { toast } from 'sonner';
 import ApiKeyGuide, { QuickProviderCards } from './ApiKeyGuide';
 import { ProviderKey, ProviderDisplayInfo, PROVIDER_DISPLAY_INFO } from '@/lib/providers';
-
-// ─── Model Definitions ────────────────────────────────────────────────────
-
-interface DynamicModel {
-  id: string;
-  name: string;
-  provider: string;
-  isFree: boolean;
-}
+import type { DynamicModel } from '@/lib/types';
+import { groupModelsAsSections } from '@/lib/model-utils';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
 
@@ -813,18 +806,11 @@ function Step3ModelSelection({
   const providerInfo = PROVIDER_DISPLAY_INFO[provider];
 
   // Group models for display
-  const groupedModels = (provider === 'openrouter' || provider === 'opencode')
-    ? (() => {
-        const auto = models.filter((m) => m.id === 'openrouter/auto');
-        const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');
-        const paid = models.filter((m) => !m.isFree);
-        const groups: { label: string; models: DynamicModel[] }[] = [];
-        if (auto.length) groups.push({ label: '⚡ Auto-Routing (Recommended)', models: auto });
-        if (free.length) groups.push({ label: `🆓 Free Models (${free.length})`, models: free });
-        if (paid.length) groups.push({ label: `💎 Paid Models (${paid.length})`, models: paid });
-        return groups;
-      })()
-    : [{ label: providerInfo.name, models }];
+  const groupedModels = groupModelsAsSections(
+    models,
+    provider,
+    providerInfo.name,
+  );
 
   return (
     <div className="space-y-5">

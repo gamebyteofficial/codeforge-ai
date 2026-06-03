@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { usePreviewState } from '@/store/hooks';
 import { buildSrcdoc } from '@/lib/preview-builder';
+import { downloadPreviewProject } from '@/lib/download-utils';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -285,95 +286,20 @@ export default function LivePreview() {
     if (!previewFiles.html && !previewFiles.css && !previewFiles.js) return;
 
     try {
-      // Build a clean version without the console capture script
-      let cleanHtml = previewFiles.html || '';
-      const css = previewFiles.css || '';
-      const js = previewFiles.js || '';
-
-      // Check if we have multiple files
-      const hasMultipleFiles = (css && cleanHtml) || (js && cleanHtml);
-
+      await downloadPreviewProject(previewFiles.html, previewFiles.css, previewFiles.js, previewTitle);
+      const hasMultipleFiles = (previewFiles.css && previewFiles.html) || (previewFiles.js && previewFiles.html);
       if (hasMultipleFiles) {
-        // Download as ZIP with separate files
-        const JSZip = (await import('jszip')).default;
-        const zip = new JSZip();
-
-        // Modify HTML to reference external files
-        let modifiedHtml = cleanHtml;
-        if (css) {
-          // Remove existing local <link> tags
-          modifiedHtml = modifiedHtml.replace(
-            /<link\s+[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*\/?>/gi,
-            (match: string, href: string) => {
-              if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) return match;
-              return '';
-            }
-          );
-          // Add link to external CSS
-          if (/<head[\s>]/i.test(modifiedHtml)) {
-            modifiedHtml = modifiedHtml.replace(/(<head[^>]*>)/i, '$1\n  <link rel="stylesheet" href="styles.css">');
-          }
-          zip.file('styles.css', css);
-        }
-        if (js) {
-          // Remove existing local <script> tags
-          modifiedHtml = modifiedHtml.replace(
-            /<script\s+[^>]*src\s*=\s*["']([^"']+\.js)["'][^>]*><\/script>/gi,
-            (match: string, src: string) => {
-              if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) return match;
-              return '';
-            }
-          );
-          // Add script reference
-          if (/<\/body>/i.test(modifiedHtml)) {
-            modifiedHtml = modifiedHtml.replace(/<\/body>/i, '  <script src="script.js"></script>\n</body>');
-          }
-          zip.file('script.js', js);
-        }
-
-        // Remove console capture script from downloaded version
-        modifiedHtml = modifiedHtml.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
-
-        // If HTML is a fragment, wrap it
-        if (!/<html[\s>]/i.test(modifiedHtml) && !/<!DOCTYPE/i.test(modifiedHtml)) {
-          modifiedHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${css ? '  <link rel="stylesheet" href="styles.css">' : ''}\n</head>\n<body>\n${modifiedHtml}\n  ${js ? '<script src="script.js"></script>' : ''}\n</body>\n</html>`;
-        }
-
-        zip.file('index.html', modifiedHtml);
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'waziros-project.zip';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
         toast.success('Download started!', { description: 'waziros-project.zip' });
       } else {
-        // Download as single HTML file
-        const srcdocContent = buildSrcdoc(cleanHtml, css, js);
-        // Remove console capture script for download
-        const cleanSrcdoc = srcdocContent.replace(/<script>\s*\(function\(\)\s*\{[\s\S]*?__preview_console[\s\S]*?<\/script>/gi, '');
-
-        const blob = new Blob([cleanSrcdoc], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const title = previewTitle || 'waziros-preview';
-        a.download = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast.success('Download started!', { description: `${title.replace(/\s+/g, '-').toLowerCase()}.html` });
+        const safeName = title.replace(/\s+/g, '-').toLowerCase();
+        toast.success('Download started!', { description: `${safeName}.html` });
       }
     } catch (error) {
       console.error('Download failed:', error);
       toast.error('Download failed', { description: 'Please try again.' });
     }
-  }, [previewFiles, buildSrcdoc, previewTitle]);
+  }, [previewFiles, previewTitle]);
 
   // Pop out — open preview in a new browser tab using a blob URL
   const handlePopOut = useCallback(() => {
@@ -654,7 +580,7 @@ export default function LivePreview() {
                         ref={iframeRef}
                         key={iframeKey}
                         srcDoc={srcdoc}
-                        sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
+                        sandbox="allow-scripts allow-modals allow-forms allow-popups"
                         title="Live Preview"
                         className="h-full w-full border-0"
                         onLoad={handleIframeLoad}

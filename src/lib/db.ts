@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { logger } from '@/lib/logger'
 import { createClient, type Client } from '@libsql/client'
 
 // ── Types compatible with what the API routes expect ──
@@ -197,24 +198,28 @@ class LibsqlDb implements DbClient {
 
         const rows = await select(sql, values)
 
-        // Handle include._count
+        // Handle include._count — batch with GROUP BY to avoid N+1 queries
         if (args?.include?._count) {
           const countSelects = args.include._count.select || {}
-          for (const row of rows) {
-            const counts: Record<string, number> = {}
+          const projectIds = rows.map((r: any) => r.id)
+          if (projectIds.length > 0) {
+            const placeholders = projectIds.map(() => '?').join(', ')
+
             if (countSelects.files) {
-              const r = await client.execute({ sql: 'SELECT COUNT(*) as cnt FROM File WHERE projectId = ?', args: [row.id] })
-              counts.files = Number((r.rows[0] as Record<string, unknown>)?.cnt ?? 0)
+              const r = await client.execute({ sql: `SELECT projectId, COUNT(*) as cnt FROM File WHERE projectId IN (${placeholders}) GROUP BY projectId`, args: projectIds })
+              const map = new Map(r.rows.map((row: any) => [row.projectId, Number(row.cnt)]))
+              for (const row of rows) { (row as any)._count = { ...((row as any)._count || {}), files: map.get(row.id) || 0 } }
             }
             if (countSelects.tasks) {
-              const r = await client.execute({ sql: 'SELECT COUNT(*) as cnt FROM Task WHERE projectId = ?', args: [row.id] })
-              counts.tasks = Number((r.rows[0] as Record<string, unknown>)?.cnt ?? 0)
+              const r = await client.execute({ sql: `SELECT projectId, COUNT(*) as cnt FROM Task WHERE projectId IN (${placeholders}) GROUP BY projectId`, args: projectIds })
+              const map = new Map(r.rows.map((row: any) => [row.projectId, Number(row.cnt)]))
+              for (const row of rows) { (row as any)._count = { ...((row as any)._count || {}), tasks: map.get(row.id) || 0 } }
             }
             if (countSelects.conversations) {
-              const r = await client.execute({ sql: 'SELECT COUNT(*) as cnt FROM Conversation WHERE projectId = ?', args: [row.id] })
-              counts.conversations = Number((r.rows[0] as Record<string, unknown>)?.cnt ?? 0)
+              const r = await client.execute({ sql: `SELECT projectId, COUNT(*) as cnt FROM Conversation WHERE projectId IN (${placeholders}) GROUP BY projectId`, args: projectIds })
+              const map = new Map(r.rows.map((row: any) => [row.projectId, Number(row.cnt)]))
+              for (const row of rows) { (row as any)._count = { ...((row as any)._count || {}), conversations: map.get(row.id) || 0 } }
             }
-            ;(row as any)._count = counts
           }
         }
 
@@ -809,14 +814,14 @@ function createDbClient(): DbClient {
   const tursoAuthToken = process.env.TURSO_AUTH_TOKEN || ''
 
   if (tursoUrl && tursoAuthToken) {
-    console.log('[DB] ☁️  Connecting to Turso cloud database:', tursoUrl)
+    logger.log('[DB] ☁️  Connecting to Turso cloud database:', tursoUrl)
     const client = createClient({ url: tursoUrl, authToken: tursoAuthToken })
     return new LibsqlDb(client)
   }
 
   // Local SQLite fallback — use Prisma
   const databaseUrl = process.env.DATABASE_URL || 'file:./dev.db'
-  console.log('[DB] 💾 Connecting to local SQLite:', databaseUrl)
+  logger.log('[DB] 💾 Connecting to local SQLite:', databaseUrl)
   return new PrismaDb(new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query'] : ['error'],
     datasources: { db: { url: databaseUrl } },

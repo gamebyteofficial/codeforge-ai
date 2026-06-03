@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { streamLLM, getApiKeyForProvider, type ProviderKey, type StreamChunk } from '@/lib/llm';
+import { logger } from '@/lib/logger';
 
 // System prompts for different agent types
 const FILE_AWARE_PROMPT = `
@@ -177,7 +178,7 @@ export async function POST(req: NextRequest) {
       const hasSecondaryKey = secondaryProvider ? !!getApiKeyForProvider(clientSettings!, secondaryProvider) : false;
 
       if (!hasPrimaryKey && !hasSecondaryKey) {
-        console.warn(`[Chat API] No API key in client settings: provider=${configuredProvider}`);
+        logger.warn(`[Chat API] No API key in client settings: provider=${configuredProvider}`);
         if (shouldStream) {
           const encoder = new TextEncoder();
           const errorStream = new ReadableStream({
@@ -199,7 +200,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (process.env.DEBUG) {
-      console.log(`[Chat API] model=${selectedModel}, agent=${agent || 'default'}, fastPath=${hasClientSettings}`);
+      logger.debug(`model=${selectedModel}, agent=${agent || 'default'}, fastPath=${hasClientSettings}`);
     }
 
     if (shouldStream) {
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
               if (closed) break;
 
               if (chunk.error) {
-                console.error(`[Chat API] LLM stream error: ${chunk.error}`);
+                logger.error(`[Chat API] LLM stream error: ${chunk.error}`);
                 safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: chunk.error })}\n\n`));
                 safeEnqueue(encoder.encode('data: [DONE]\n\n'));
                 safeClose();
@@ -260,7 +261,7 @@ export async function POST(req: NextRequest) {
             safeEnqueue(encoder.encode('data: [DONE]\n\n'));
             safeClose();
           } catch (error) {
-            console.error('[Chat API] Stream error:', error);
+            logger.error('[Chat API] Stream error:', error);
             if (!closed) {
               const errMsg = error instanceof Error ? error.message : 'Stream interrupted unexpectedly';
               safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`));
@@ -312,7 +313,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[Chat API] Unhandled error: ${errorMsg}`);
+    logger.error(`[Chat API] Unhandled error: ${errorMsg}`);
 
     const isNoApiKey = errorMsg.toLowerCase().includes('no api key') || errorMsg.toLowerCase().includes('api key');
     const isNetworkError = errorMsg.toLowerCase().includes('network') ||

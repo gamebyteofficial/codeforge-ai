@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +21,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ task });
   } catch (error) {
-    console.error('Failed to update task:', error);
+    logger.error('Failed to update task:', error);
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
   }
 }
@@ -31,7 +32,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     await db.task.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to delete task:', error);
+    logger.error('Failed to delete task:', error);
     return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 });
   }
 }

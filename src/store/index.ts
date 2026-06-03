@@ -101,8 +101,10 @@ interface AppState {
   // Project
   currentProject: Project | null;
   projects: Project[];
+  areProjectsLoaded: boolean;
   setCurrentProject: (project: Project | null) => void;
   setProjects: (projects: Project[]) => void;
+  setAreProjectsLoaded: (loaded: boolean) => void;
 
   // Chat
   conversations: Conversation[];
@@ -176,8 +178,10 @@ export const useAppStore = create<AppState>((set) => ({
   // Project
   currentProject: null,
   projects: [],
+  areProjectsLoaded: false,
   setCurrentProject: (project) => set({ currentProject: project }),
   setProjects: (projects) => set({ projects }),
+  setAreProjectsLoaded: (loaded) => set({ areProjectsLoaded: loaded }),
 
   // Chat
   conversations: [],

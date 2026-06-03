@@ -493,7 +493,7 @@ export default function Terminal() {
       {/* Body */}
       {bottomTab === 'terminal' ? (
         <ScrollArea className="flex-1">
-          <div className="min-h-full px-0 py-2">
+          <div role="log" aria-live="polite" className="min-h-full px-0 py-2">
             {terminalLines.map((line) => (
               <TerminalLineRow key={line.id} line={line} />
             ))}

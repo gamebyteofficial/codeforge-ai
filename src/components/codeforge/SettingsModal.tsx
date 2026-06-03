@@ -17,47 +17,33 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { useAppStore } from '@/store';
 import { useUIState, useStore } from '@/store/hooks';
 import { saveSettings, loadSettingsFromLocal, saveSettingsToLocal, markOnboarded } from '@/lib/localSettings';
 import {
-  Eye,
-  EyeOff,
-  Wifi,
-  WifiOff,
   RotateCcw,
   Save,
   X,
   Brain,
   Settings2,
   Sparkles,
-  CheckCircle2,
-  AlertCircle,
   Loader2,
-  RefreshCw,
-  CreditCard,
-  Gift,
   Zap,
   ArrowRightLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ApiKeyGuide from './ApiKeyGuide';
-import { ProviderKey, ProviderDisplayInfo, PROVIDER_DISPLAY_INFO } from '@/lib/providers';
+import { ProviderKey, PROVIDER_DISPLAY_INFO } from '@/lib/providers';
+import type { DynamicModel } from '@/lib/types';
 
-// ─── Model Definitions ────────────────────────────────────────────────────
-
-interface DynamicModel {
-  id: string;
-  name: string;
-  provider: string;
-  isFree: boolean;
-}
+// Extracted components
+import ApiKeyInputSection from './settings/ApiKeySection';
+import ModelSelectionSection from './settings/ModelSelectionSection';
+import { useSettingsConnection } from './settings/useSettingsConnection';
 
 // ─── Default Settings ────────────────────────────────────────────────────────
 
@@ -80,136 +66,6 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   streaming: 'true',
 };
 
-// ─── API Key Input Sub-component ─────────────────────────────────────────────
-
-function ApiKeyInputSection({
-  label,
-  provider,
-  apiKey,
-  onProviderChange,
-  onApiKeyChange,
-  showApiKey,
-  onToggleShowKey,
-  connectionStatus,
-  onTestConnection,
-  isTesting,
-  excludeProviders,
-}: {
-  label: string;
-  labelIcon: React.ReactNode;
-  provider: ProviderKey;
-  apiKey: string;
-  onProviderChange: (provider: string) => void;
-  onApiKeyChange: (key: string) => void;
-  showApiKey: boolean;
-  onToggleShowKey: () => void;
-  connectionStatus: 'idle' | 'success' | 'error';
-  onTestConnection: () => void;
-  isTesting: boolean;
-  excludeProviders?: string[];
-}) {
-  const providerInfo = PROVIDER_DISPLAY_INFO[provider];
-
-  return (
-    <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/20 p-4">
-      {/* Section header */}
-      <div className="flex items-center gap-2">
-        <Zap className="size-3.5 text-emerald-400" />
-        <span className="text-xs font-semibold text-zinc-300">{label}</span>
-        <span className="text-base">{providerInfo.icon}</span>
-        <span className="text-xs text-zinc-400">{providerInfo.name}</span>
-        {apiKey && (
-          <CheckCircle2 className="ml-auto size-3.5 text-emerald-400" />
-        )}
-      </div>
-
-      {/* Provider selector */}
-      <div className="space-y-1.5">
-        <Label className="text-zinc-500 text-[10px] uppercase tracking-wider">Provider</Label>
-        <Select value={provider} onValueChange={onProviderChange}>
-          <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-8 text-xs">
-            <SelectValue placeholder="Select provider" />
-          </SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
-            {(Object.entries(PROVIDER_DISPLAY_INFO) as [ProviderKey, ProviderDisplayInfo][])
-              .filter(([key]) => !excludeProviders?.includes(key))
-              .map(([key, info]) => (
-                <SelectItem
-                  key={key}
-                  value={key}
-                  className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100 text-xs"
-                >
-                  <span className="mr-2">{info.icon}</span>
-                  {info.name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* API Key input */}
-      <div className="space-y-1.5">
-        <Label className="text-zinc-500 text-[10px] uppercase tracking-wider">API Key</Label>
-        <div className="relative">
-          <Input
-            type={showApiKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={(e) => onApiKeyChange(e.target.value)}
-            placeholder={providerInfo.keyHint || 'sk-...'}
-            className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 pr-10 h-8 font-mono text-xs"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute right-0.5 top-1/2 -translate-y-1/2 size-7 text-zinc-500 hover:text-zinc-300"
-            onClick={onToggleShowKey}
-          >
-            {showApiKey ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-          </Button>
-        </div>
-        {!apiKey && (
-          <div className="flex items-center gap-1.5 rounded bg-amber-500/10 border border-amber-500/15 px-2 py-1">
-            <AlertCircle className="size-2.5 text-amber-400 shrink-0" />
-            <span className="text-[10px] text-amber-300/80">No key — enter one to use {providerInfo.name}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Test Connection */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="bg-zinc-800/50 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 h-7 text-[11px] gap-1.5"
-          onClick={onTestConnection}
-          disabled={isTesting || !apiKey}
-        >
-          {isTesting ? (
-            <><Loader2 className="size-3 animate-spin" /> Testing…</>
-          ) : connectionStatus === 'success' ? (
-            <><CheckCircle2 className="size-3 text-emerald-400" /> Connected</>
-          ) : connectionStatus === 'error' ? (
-            <><AlertCircle className="size-3 text-red-400" /> Failed — Retry</>
-          ) : (
-            <><Wifi className="size-3" /> Test Connection</>
-          )}
-        </Button>
-        {connectionStatus === 'success' && (
-          <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-            <Wifi className="size-2.5" /> Connected to {providerInfo.name}
-          </span>
-        )}
-        {connectionStatus === 'error' && (
-          <span className="text-[10px] text-red-400 flex items-center gap-1">
-            <WifiOff className="size-2.5" /> Connection failed
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Settings Modal Component ────────────────────────────────────────────────
 
 export default function SettingsModal() {
@@ -225,14 +81,12 @@ export default function SettingsModal() {
   const [showApiKey4, setShowApiKey4] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isTesting1, setIsTesting1] = useState(false);
-  const [isTesting2, setIsTesting2] = useState(false);
-  const [isTesting3, setIsTesting3] = useState(false);
-  const [isTesting4, setIsTesting4] = useState(false);
-  const [connectionStatus1, setConnectionStatus1] = useState<'idle' | 'success' | 'error'>('idle');
-  const [connectionStatus2, setConnectionStatus2] = useState<'idle' | 'success' | 'error'>('idle');
-  const [connectionStatus3, setConnectionStatus3] = useState<'idle' | 'success' | 'error'>('idle');
-  const [connectionStatus4, setConnectionStatus4] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // Connection hooks for each provider
+  const conn1 = useSettingsConnection(1, localSettings);
+  const conn2 = useSettingsConnection(2, localSettings);
+  const conn3 = useSettingsConnection(3, localSettings);
+  const conn4 = useSettingsConnection(4, localSettings);
 
   // Dynamic models state
   const [models, setModels] = useState<DynamicModel[]>([]);
@@ -334,25 +188,25 @@ export default function SettingsModal() {
         : '';
     const newSettings = { ...localSettings, provider, model: defaultModel };
     setLocalSettings(newSettings);
-    setConnectionStatus1('idle');
+    conn1.resetStatus();
   };
 
   // When secondary provider changes
   const handleProvider2Change = (provider: string) => {
     updateSetting('provider2', provider);
-    setConnectionStatus2('idle');
+    conn2.resetStatus();
   };
 
   // When provider 3 changes
   const handleProvider3Change = (provider: string) => {
     updateSetting('provider3', provider);
-    setConnectionStatus3('idle');
+    conn3.resetStatus();
   };
 
   // When provider 4 changes
   const handleProvider4Change = (provider: string) => {
     updateSetting('provider4', provider);
-    setConnectionStatus4('idle');
+    conn4.resetStatus();
   };
 
   // When primary API key changes
@@ -386,7 +240,7 @@ export default function SettingsModal() {
 
   // Swap primary ↔ secondary
   const handleSwapProviders = () => {
-    const newSettings = {
+    const newSettings: Record<string, string> = {
       ...localSettings,
       provider: currentProvider2,
       provider2: currentProvider1,
@@ -398,131 +252,11 @@ export default function SettingsModal() {
       newSettings.model = 'big-pickle';
     }
     setLocalSettings(newSettings);
-    setConnectionStatus1('idle');
-    setConnectionStatus2('idle');
-    setConnectionStatus3('idle');
-    setConnectionStatus4('idle');
+    conn1.resetStatus();
+    conn2.resetStatus();
+    conn3.resetStatus();
+    conn4.resetStatus();
     toast.info('Providers swapped', { description: `${PROVIDER_DISPLAY_INFO[currentProvider2].name} is now your primary provider` });
-  };
-
-  // Test primary connection
-  const handleTestConnection1 = async () => {
-    setIsTesting1(true);
-    setConnectionStatus1('idle');
-    try {
-      const key = localSettings[`${currentProvider1}_apiKey`] || localSettings.apiKey;
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settings: { ...localSettings, provider: currentProvider1, [`${currentProvider1}_apiKey`]: key, apiKey: key },
-          testConnection: true,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConnectionStatus1('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider1].name}` });
-      } else {
-        setConnectionStatus1('error');
-        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
-      }
-    } catch {
-      setConnectionStatus1('error');
-      toast.error('Connection failed', { description: 'Network error.' });
-    } finally {
-      setIsTesting1(false);
-    }
-  };
-
-  // Test secondary connection
-  const handleTestConnection2 = async () => {
-    setIsTesting2(true);
-    setConnectionStatus2('idle');
-    try {
-      const key = localSettings[`${currentProvider2}_apiKey`];
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settings: { provider: currentProvider2, [`${currentProvider2}_apiKey`]: key, apiKey: key },
-          testConnection: true,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConnectionStatus2('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider2].name}` });
-      } else {
-        setConnectionStatus2('error');
-        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
-      }
-    } catch {
-      setConnectionStatus2('error');
-      toast.error('Connection failed', { description: 'Network error.' });
-    } finally {
-      setIsTesting2(false);
-    }
-  };
-
-  // Test provider 3 connection
-  const handleTestConnection3 = async () => {
-    setIsTesting3(true);
-    setConnectionStatus3('idle');
-    try {
-      const key = localSettings[`${currentProvider3}_apiKey`];
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settings: { provider: currentProvider3, [`${currentProvider3}_apiKey`]: key, apiKey: key },
-          testConnection: true,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConnectionStatus3('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider3].name}` });
-      } else {
-        setConnectionStatus3('error');
-        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
-      }
-    } catch {
-      setConnectionStatus3('error');
-      toast.error('Connection failed', { description: 'Network error.' });
-    } finally {
-      setIsTesting3(false);
-    }
-  };
-
-  // Test provider 4 connection
-  const handleTestConnection4 = async () => {
-    setIsTesting4(true);
-    setConnectionStatus4('idle');
-    try {
-      const key = localSettings[`${currentProvider4}_apiKey`];
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settings: { provider: currentProvider4, [`${currentProvider4}_apiKey`]: key, apiKey: key },
-          testConnection: true,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConnectionStatus4('success');
-        toast.success('Connection successful', { description: `Connected to ${PROVIDER_DISPLAY_INFO[currentProvider4].name}` });
-      } else {
-        setConnectionStatus4('error');
-        toast.error('Connection failed', { description: data.error || 'Could not connect.' });
-      }
-    } catch {
-      setConnectionStatus4('error');
-      toast.error('Connection failed', { description: 'Network error.' });
-    } finally {
-      setIsTesting4(false);
-    }
   };
 
   // Save settings to localStorage and API (best-effort)
@@ -563,10 +297,10 @@ export default function SettingsModal() {
     setShowApiKey2(false);
     setShowApiKey3(false);
     setShowApiKey4(false);
-    setConnectionStatus1('idle');
-    setConnectionStatus2('idle');
-    setConnectionStatus3('idle');
-    setConnectionStatus4('idle');
+    conn1.resetStatus();
+    conn2.resetStatus();
+    conn3.resetStatus();
+    conn4.resetStatus();
     toast.info('Settings reset');
   };
 
@@ -577,26 +311,12 @@ export default function SettingsModal() {
     setShowApiKey2(false);
     setShowApiKey3(false);
     setShowApiKey4(false);
-    setConnectionStatus1('idle');
-    setConnectionStatus2('idle');
-    setConnectionStatus3('idle');
-    setConnectionStatus4('idle');
+    conn1.resetStatus();
+    conn2.resetStatus();
+    conn3.resetStatus();
+    conn4.resetStatus();
     setIsSettingsOpen(false);
   };
-
-  // Group models for display
-  const groupedModels = (currentProvider1 === 'openrouter' || currentProvider1 === 'opencode')
-    ? (() => {
-        const auto = models.filter((m) => m.id === 'openrouter/auto');
-        const free = models.filter((m) => m.isFree && m.id !== 'openrouter/auto');
-        const paid = models.filter((m) => !m.isFree);
-        const groups: { label: string; models: DynamicModel[] }[] = [];
-        if (auto.length) groups.push({ label: '⚡ Auto-Routing (Recommended)', models: auto });
-        if (free.length) groups.push({ label: `🆓 Free Models (${free.length})`, models: free });
-        if (paid.length) groups.push({ label: `💎 Paid Models (${paid.length})`, models: paid });
-        return groups;
-      })()
-    : [{ label: PROVIDER_DISPLAY_INFO[currentProvider1 as ProviderKey]?.name || currentProvider1, models }];
 
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -684,9 +404,9 @@ export default function SettingsModal() {
                       onApiKeyChange={handleApiKey1Change}
                       showApiKey={showApiKey1}
                       onToggleShowKey={() => setShowApiKey1(!showApiKey1)}
-                      connectionStatus={connectionStatus1}
-                      onTestConnection={handleTestConnection1}
-                      isTesting={isTesting1}
+                      connectionStatus={conn1.connectionStatus}
+                      onTestConnection={conn1.testConnection}
+                      isTesting={conn1.isTesting}
                       excludeProviders={[currentProvider2, currentProvider3, currentProvider4]}
                     />
 
@@ -700,9 +420,9 @@ export default function SettingsModal() {
                       onApiKeyChange={handleApiKey2Change}
                       showApiKey={showApiKey2}
                       onToggleShowKey={() => setShowApiKey2(!showApiKey2)}
-                      connectionStatus={connectionStatus2}
-                      onTestConnection={handleTestConnection2}
-                      isTesting={isTesting2}
+                      connectionStatus={conn2.connectionStatus}
+                      onTestConnection={conn2.testConnection}
+                      isTesting={conn2.isTesting}
                       excludeProviders={[currentProvider1, currentProvider3, currentProvider4]}
                     />
 
@@ -716,9 +436,9 @@ export default function SettingsModal() {
                       onApiKeyChange={handleApiKey3Change}
                       showApiKey={showApiKey3}
                       onToggleShowKey={() => setShowApiKey3(!showApiKey3)}
-                      connectionStatus={connectionStatus3}
-                      onTestConnection={handleTestConnection3}
-                      isTesting={isTesting3}
+                      connectionStatus={conn3.connectionStatus}
+                      onTestConnection={conn3.testConnection}
+                      isTesting={conn3.isTesting}
                       excludeProviders={[currentProvider1, currentProvider2, currentProvider4]}
                     />
 
@@ -732,9 +452,9 @@ export default function SettingsModal() {
                       onApiKeyChange={handleApiKey4Change}
                       showApiKey={showApiKey4}
                       onToggleShowKey={() => setShowApiKey4(!showApiKey4)}
-                      connectionStatus={connectionStatus4}
-                      onTestConnection={handleTestConnection4}
-                      isTesting={isTesting4}
+                      connectionStatus={conn4.connectionStatus}
+                      onTestConnection={conn4.testConnection}
+                      isTesting={conn4.isTesting}
                       excludeProviders={[currentProvider1, currentProvider2, currentProvider3]}
                     />
                   </div>
@@ -742,86 +462,15 @@ export default function SettingsModal() {
                   {/* API Key Guide */}
                   <ApiKeyGuide provider={currentProvider1} compact />
 
-                  {/* Model Selection - Dynamic */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-zinc-300 text-xs">Model</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 gap-1 px-2 text-xs text-zinc-500 hover:text-zinc-300"
-                        onClick={fetchModels}
-                        disabled={isLoadingModels}
-                      >
-                        <RefreshCw className={`size-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
-                        Refresh
-                      </Button>
-                    </div>
-                    {isLoadingModels ? (
-                      <div className="flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/30 py-4">
-                        <Loader2 className="size-4 animate-spin text-emerald-500" />
-                        <span className="ml-2 text-sm text-zinc-400">Loading models...</span>
-                      </div>
-                    ) : (
-                      <Select
-                        value={localSettings.model || ''}
-                        onValueChange={(v) => updateSetting('model', v)}
-                      >
-                        <SelectTrigger className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 h-9">
-                          <SelectValue placeholder="Select model" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-800 border-zinc-800 max-h-60">
-                          {groupedModels.map((group) => (
-                            <div key={group.label}>
-                              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                                {group.label}
-                              </div>
-                              {group.models.map((m) => (
-                                <SelectItem
-                                  key={m.id}
-                                  value={m.id}
-                                  className="text-zinc-200 focus:bg-zinc-700 focus:text-zinc-100"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <span className="flex-1 truncate">{m.name}</span>
-                                    {m.isFree && (
-                                      <span className="shrink-0 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
-                                        FREE
-                                      </span>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </div>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {localSettings.model && (
-                      <div className="rounded-md border border-zinc-800 bg-zinc-800/20 px-3 py-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-zinc-400">
-                            Active model: <span className="text-emerald-400 font-mono">{localSettings.model}</span>
-                          </p>
-                          {(() => {
-                            const activeModel = models.find(m => m.id === localSettings.model);
-                            if (!activeModel) return null;
-                            return activeModel.isFree ? (
-                              <span className="flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
-                                <Gift className="size-2.5" />
-                                FREE
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-400">
-                                <CreditCard className="size-2.5" />
-                                PAID
-                              </span>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  {/* Model Selection */}
+                  <ModelSelectionSection
+                    models={models}
+                    isLoadingModels={isLoadingModels}
+                    currentModel={localSettings.model || ''}
+                    currentProvider1={currentProvider1}
+                    onModelChange={(v) => updateSetting('model', v)}
+                    onRefreshModels={fetchModels}
+                  />
 
                   {/* Configured providers summary */}
                   <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/10 px-3 py-2">

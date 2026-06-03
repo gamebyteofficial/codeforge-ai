@@ -1,18 +1,7 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { detectLanguage } from '@/lib/language-utils';
 import { NextRequest, NextResponse } from 'next/server';
-
-function detectLanguage(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const langMap: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-    py: 'python', html: 'html', css: 'css', json: 'json', yaml: 'yaml',
-    yml: 'yaml', md: 'markdown', rs: 'rust', go: 'go', java: 'java',
-    cpp: 'cpp', c: 'c', cs: 'csharp', php: 'php', rb: 'ruby',
-    swift: 'swift', kt: 'kotlin', dart: 'dart', sql: 'sql',
-    sh: 'bash', bash: 'bash', xml: 'xml', svg: 'xml',
-  };
-  return langMap[ext] || 'text';
-}
 
 interface BatchFileInput {
   name: string;
@@ -48,6 +37,14 @@ export async function POST(req: NextRequest) {
     if (!files || !Array.isArray(files) || files.length === 0) {
       return NextResponse.json(
         { error: 'A non-empty "files" array is required' },
+        { status: 400 }
+      );
+    }
+
+    // Limit batch size to prevent abuse
+    if (files.length > 100) {
+      return NextResponse.json(
+        { error: 'Batch size limited to 100 files per request' },
         { status: 400 }
       );
     }
@@ -110,13 +107,13 @@ export async function POST(req: NextRequest) {
             ? fileError.message
             : 'Unknown error processing file';
         result.errors.push({ path, error: message });
-        console.error(`Failed to process file at "${path}":`, fileError);
+        logger.error(`Failed to process file at "${path}":`, fileError);
       }
     }
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    console.error('Failed to batch create/update files:', error);
+    logger.error('Failed to batch create/update files:', error);
     return NextResponse.json(
       { error: 'Failed to batch create/update files' },
       { status: 500 }

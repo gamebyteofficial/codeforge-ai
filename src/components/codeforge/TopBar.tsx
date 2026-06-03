@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap,
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 import { useAppStore, type Project } from '@/store';
-import { useProjectState, useUIState, useChatState, useTaskState } from '@/store/hooks';
+import { useProjectState, useUIState, useChatState, useTaskState, useStore } from '@/store/hooks';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -44,6 +44,8 @@ export default function TopBar() {
   const projects = useProjectState(s => s.projects);
   const setCurrentProject = useProjectState(s => s.setCurrentProject);
   const setProjects = useProjectState(s => s.setProjects);
+  const areProjectsLoaded = useStore(s => s.areProjectsLoaded);
+  const setAreProjectsLoaded = useStore(s => s.setAreProjectsLoaded);
   const setIsSettingsOpen = useUIState(s => s.setIsSettingsOpen);
   const isChatLoading = useChatState(s => s.isChatLoading);
   const currentConversation = useChatState(s => s.currentConversation);
@@ -55,8 +57,9 @@ export default function TopBar() {
   const [newProjectFramework, setNewProjectFramework] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Fetch projects on mount
+  // Fetch projects only if not already loaded by page.tsx
   useEffect(() => {
+    if (areProjectsLoaded) return;
     const fetchProjects = async () => {
       try {
         const res = await fetch('/api/projects');
@@ -64,16 +67,20 @@ export default function TopBar() {
           const data = await res.json();
           setProjects(data.projects ?? []);
           // Auto-select first project
-          if (data.projects?.length > 0 && !currentProject) {
+          if (data.projects?.length > 0 && !useAppStore.getState().currentProject) {
             setCurrentProject(data.projects[0]);
           }
+          setAreProjectsLoaded(true);
+        } else {
+          setAreProjectsLoaded(true);
         }
       } catch (error) {
         console.error('Failed to fetch projects:', error);
+        setAreProjectsLoaded(true);
       }
     };
     fetchProjects();
-  }, []);
+  }, [areProjectsLoaded, setProjects, setCurrentProject, setAreProjectsLoaded]);
 
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
@@ -103,7 +110,7 @@ export default function TopBar() {
     }
   }, [newProjectName, newProjectLanguage, newProjectFramework, projects, setProjects, setCurrentProject]);
 
-  const runningTasks = tasks.filter((t) => t.status === 'running').length;
+  const runningTasks = useMemo(() => tasks.filter(t => t.status === 'running'), [tasks]);
 
   return (
     <>
@@ -181,7 +188,7 @@ export default function TopBar() {
         <div className="flex items-center gap-2">
           {/* Running tasks indicator */}
           <AnimatePresence>
-            {runningTasks > 0 && (
+            {runningTasks.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -190,7 +197,7 @@ export default function TopBar() {
               >
                 <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
                 <span className="text-[11px] font-medium text-emerald-400">
-                  {runningTasks} running
+                  {runningTasks.length} running
                 </span>
               </motion.div>
             )}

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ memories });
   } catch (error) {
-    console.error('Failed to fetch memories:', error);
+    logger.error('Failed to fetch memories:', error);
     return NextResponse.json({ error: 'Failed to fetch memories' }, { status: 500 });
   }
 }
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ memory }, { status: 201 });
   } catch (error) {
-    console.error('Failed to create memory:', error);
+    logger.error('Failed to create memory:', error);
     return NextResponse.json({ error: 'Failed to create memory' }, { status: 500 });
   }
 }
@@ -58,7 +59,7 @@ export async function DELETE(req: NextRequest) {
     await db.memory.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to delete memory:', error);
+    logger.error('Failed to delete memory:', error);
     return NextResponse.json({ error: 'Failed to delete memory' }, { status: 500 });
   }
 }

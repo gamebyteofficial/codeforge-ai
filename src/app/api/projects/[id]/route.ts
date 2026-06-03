@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ project });
   } catch (error) {
-    console.error('Failed to fetch project:', error);
+    logger.error('Failed to fetch project:', error);
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
   }
 }
@@ -29,13 +30,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const body = await req.json();
+
+    // Whitelist updatable fields only — prevent overwriting id, createdAt, etc.
+    const allowedFields = ['name', 'description', 'language', 'framework', 'path'] as const;
+    const data: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (body[key] !== undefined) {
+        data[key] = body[key];
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
     const project = await db.project.update({
       where: { id },
-      data: body,
+      data,
     });
     return NextResponse.json({ project });
   } catch (error) {
-    console.error('Failed to update project:', error);
+    logger.error('Failed to update project:', error);
     return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });
   }
 }
@@ -46,7 +61,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     await db.project.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to delete project:', error);
+    logger.error('Failed to delete project:', error);
     return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });
   }
 }

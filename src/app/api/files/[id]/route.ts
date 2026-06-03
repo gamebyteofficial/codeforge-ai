@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -12,7 +13,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ file });
   } catch (error) {
-    console.error('Failed to fetch file:', error);
+    logger.error('Failed to fetch file:', error);
     return NextResponse.json({ error: 'Failed to fetch file' }, { status: 500 });
   }
 }
@@ -34,7 +35,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ file });
   } catch (error) {
-    console.error('Failed to update file:', error);
+    logger.error('Failed to update file:', error);
     return NextResponse.json({ error: 'Failed to update file' }, { status: 500 });
   }
 }
@@ -45,7 +46,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     await db.file.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to delete file:', error);
+    logger.error('Failed to delete file:', error);
     return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 });
   }
 }

@@ -12,6 +12,7 @@
  */
 
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 // ─── Provider Configuration ──────────────────────────────────────────────────
 
@@ -217,7 +218,7 @@ async function* streamOpenAICompatible(
   } catch (fetchError) {
     clearTimeout(timeoutId);
     const errMsg = fetchError instanceof Error ? fetchError.message : 'Unknown error';
-    console.error(`[LLM] Fetch error calling ${config.name}: ${errMsg}`);
+    logger.error(`[LLM] Fetch error calling ${config.name}: ${errMsg}`);
 
     if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
       yield { content: '', error: `Request to ${config.name} timed out after 120 seconds. Try a different model or provider.`, done: true };
@@ -239,7 +240,7 @@ async function* streamOpenAICompatible(
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
     } catch {}
-    console.error(`[LLM] ${config.name} API error: ${response.status} - ${errorMessage}`);
+    logger.error(`[LLM] ${config.name} API error: ${response.status} - ${errorMessage}`);
 
     const isModelUnavailable = errorMessage.toLowerCase().includes('no endpoints') ||
       errorMessage.toLowerCase().includes('not available') ||
@@ -252,7 +253,7 @@ async function* streamOpenAICompatible(
 
     if (model !== 'openrouter/auto' && config.extraHeaders && (isModelUnavailable || isRateLimited)) {
       const reason = isRateLimited ? 'rate limited' : 'currently unavailable';
-      if (process.env.DEBUG) console.log(`[LLM] Model "${model}" ${reason}. Auto-retrying with openrouter/auto...`);
+      if (process.env.DEBUG) logger.debug(`Model "${model}" ${reason}. Auto-retrying with openrouter/auto...`);
       yield { content: `⚠️ Model "${model}" is ${reason}. Auto-switching to openrouter/auto...\n\n`, done: false };
       yield* streamOpenAICompatible(config, apiKey, 'openrouter/auto', messages, temperature, maxTokens);
       return;
@@ -372,7 +373,7 @@ async function* streamAnthropic(
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
     } catch {}
-    console.error(`[LLM] Anthropic API error: ${response.status} - ${errorMessage}`);
+    logger.error(`[LLM] Anthropic API error: ${response.status} - ${errorMessage}`);
     yield { content: '', error: errorMessage, done: true };
     return;
   }
@@ -481,7 +482,7 @@ async function* streamGemini(
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error?.message || errorMessage;
     } catch {}
-    console.error(`[LLM] Gemini API error: ${response.status} - ${errorMessage}`);
+    logger.error(`[LLM] Gemini API error: ${response.status} - ${errorMessage}`);
     yield { content: '', error: errorMessage, done: true };
     return;
   }
@@ -582,7 +583,7 @@ function resolveProvider(settings: Record<string, string>): ResolvedProvider | n
     const fallbackConfig = PROVIDER_CONFIGS[fallbackProvider];
     const fallbackKey = getApiKeyForProvider(settings, fallbackProvider);
     if (fallbackKey && fallbackConfig) {
-      if (process.env.DEBUG) console.log(`[LLM] Primary provider "${primaryProvider}" has no API key. Falling back to ${slotName} "${fallbackProvider}".`);
+      if (process.env.DEBUG) logger.debug(`Primary provider "${primaryProvider}" has no API key. Falling back to ${slotName} "${fallbackProvider}".`);
       return { provider: fallbackProvider, apiKey: fallbackKey, config: fallbackConfig, isFallback: true };
     }
   }
@@ -628,7 +629,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
       settings.provider3,
       settings.provider4,
     ].filter(Boolean);
-    console.error(`[LLM] No API key found. Checked providers: ${checkedProviders.join(', ')}`);
+    logger.error(`[LLM] No API key found. Checked providers: ${checkedProviders.join(', ')}`);
     yield {
       content: '',
       error: `No API key configured. Checked providers: ${checkedProviders.map(p => PROVIDER_CONFIGS[p as ProviderKey]?.name || p).join(', ')}. Please add an API key in ⚙️ Settings.`,
@@ -645,7 +646,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
       actualModel.startsWith('openrouter/') && provider === 'openrouter';
     if (!modelBelongsToProvider) {
       const fallbackModel = config.testModel || config.models[0] || 'openrouter/auto';
-      if (process.env.DEBUG) console.log(`[LLM] Model "${actualModel}" not available on "${provider}". Using "${fallbackModel}".`);
+      if (process.env.DEBUG) logger.debug(`Model "${actualModel}" not available on "${provider}". Using "${fallbackModel}".`);
       yield { content: `⚠️ Switched to ${config.name} (${fallbackModel}) as fallback.\n\n`, done: false };
       actualModel = fallbackModel;
     }
@@ -657,7 +658,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
   }
 
   if (process.env.DEBUG) {
-    console.log(`[LLM] Streaming: provider=${provider}, model=${actualModel}, fallback=${isFallback}`);
+    logger.debug(`Streaming: provider=${provider}, model=${actualModel}, fallback=${isFallback}`);
   }
 
   let primaryError: string | null = null;
@@ -672,11 +673,11 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
-    console.error(`[LLM] Fatal error calling ${config.name}:`, errorMsg);
+    logger.error(`[LLM] Fatal error calling ${config.name}:`, errorMsg);
     primaryError = errorMsg;
 
     if (provider === 'openrouter' && actualModel !== 'openrouter/auto') {
-      if (process.env.DEBUG) console.log(`[LLM] Auto-retrying with openrouter/auto...`);
+      if (process.env.DEBUG) logger.debug('Auto-retrying with openrouter/auto...');
       yield { content: `⚠️ Model "${actualModel}" failed. Auto-switching to openrouter/auto...\n\n`, done: false };
       try {
         yield* streamOpenAICompatible(config, apiKey, 'openrouter/auto', messages, temperature, maxTokens);
@@ -694,7 +695,7 @@ export async function* streamLLM(options: LLMCallOptions): AsyncGenerator<Stream
         const secondaryKey = getApiKeyForProvider(settings, secondaryProvider);
         if (secondaryKey && secondaryConfig) {
           const fallbackModel = secondaryConfig.testModel || secondaryConfig.models[0] || 'openrouter/auto';
-          if (process.env.DEBUG) console.log(`[LLM] Primary failed. Retrying with secondary "${secondaryProvider}" model "${fallbackModel}"...`);
+          if (process.env.DEBUG) logger.debug(`Primary failed. Retrying with secondary "${secondaryProvider}" model "${fallbackModel}"...`);
           yield { content: `⚠️ ${config.name} failed. Switching to ${secondaryConfig.name}...\n\n`, done: false };
           try {
             if (secondaryConfig.anthropicFormat) {

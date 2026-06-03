@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Script from "next/script";
+import RootErrorBoundary from "@/components/RootErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,9 +42,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <TooltipProvider delayDuration={300}>
-          {children}
-        </TooltipProvider>
+        <RootErrorBoundary>
+          <TooltipProvider delayDuration={300}>
+            {children}
+          </TooltipProvider>
+        </RootErrorBoundary>
         <Toaster />
         <Script id="sw-register" strategy="afterInteractive">
           {`if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}`}

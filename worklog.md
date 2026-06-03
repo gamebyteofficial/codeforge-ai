@@ -1080,3 +1080,443 @@ Stage Summary:
 - Deleted files automatically removed from tab bar
 - Closing active tab switches to adjacent tab
 - All existing functionality (save, copy, edit, preview) works with the active tab's file
+
+---
+Task ID: 10
+Agent: Accessibility Agent
+Task: Improve accessibility and add root error boundary
+
+Work Log:
+
+### 1. Added ARIA attributes to sidebar tabs in page.tsx
+- Added `role="tablist"` to the parent div containing the icon strip tab buttons
+- Added `role="tab"`, `aria-selected={isActive}`, and `aria-label={tab.label}` to each sidebar tab button
+
+### 2. Added ARIA to keyboard shortcuts overlay in page.tsx
+- Added `role="dialog"`, `aria-modal="true"`, and `aria-label="Keyboard shortcuts"` to the inner div of the shortcuts overlay
+
+### 3. Added ARIA to status bar buttons in page.tsx
+- Terminal toggle button: added `aria-label="Toggle terminal"`
+- Preview toggle button: added `aria-label="Toggle preview"`
+- Quick Ask button: added `aria-label="Focus chat input"`
+
+### 4. Created RootErrorBoundary component
+- Created `/src/components/RootErrorBoundary.tsx` with class-based error boundary
+- Displays error message with AlertTriangle icon and "Reload Application" button
+- Wrapped the app in layout.tsx with RootErrorBoundary around TooltipProvider
+
+### 5. Added role="log" to Terminal output
+- Added `role="log"` and `aria-live="polite"` to the div containing terminal output lines in Terminal.tsx
+
+### 6. Added screen reader text for latency indicator
+- Added `<span className="sr-only">` with connection status text (Connection good / Connection slow / Connection issues) next to the latency dot indicator
+
+### Lint Status
+- All modified files pass ESLint with zero errors (pre-existing errors in other files are unrelated)
+
+Stage Summary:
+- 4 files modified: page.tsx, layout.tsx, Terminal.tsx, RootErrorBoundary.tsx (new)
+- Sidebar tabs now properly announce as a tablist with selected state
+- Keyboard shortcuts overlay is accessible as a dialog
+- Status bar buttons have descriptive labels for screen readers
+- Root error boundary catches unhandled errors and shows recovery UI
+- Terminal output announces new lines to screen readers
+- Latency indicator has screen reader text
+
+---
+Task ID: 9
+Agent: Dedup Fix Agent
+Task: Fix duplicate `/api/projects` fetch — both page.tsx and TopBar.tsx independently fetch on mount
+
+Work Log:
+
+### Step 1: Added `areProjectsLoaded` state to Zustand store
+- Modified `src/store/index.ts`:
+  - Added `areProjectsLoaded: boolean` field to `AppState` interface (default: `false`)
+  - Added `setAreProjectsLoaded: (loaded: boolean) => void` action to `AppState` interface
+  - Added implementation in store: `areProjectsLoaded: false` and `setAreProjectsLoaded: (loaded) => set({ areProjectsLoaded: loaded })`
+- `src/store/hooks.ts` needed no changes — the existing generic selector hooks (`useStore`, `useProjectState`) automatically expose the new field
+
+### Step 2: Modified page.tsx to store fetched projects and mark as loaded
+- Modified `src/app/page.tsx` in the `ensureProject` useEffect:
+  - After fetching `/api/projects`, now calls `setProjects(data.projects ?? [])` to store all projects in Zustand
+  - Calls `setAreProjectsLoaded(true)` after successful fetch so TopBar knows data is available
+  - When `currentProject` already exists (early return), also calls `setAreProjectsLoaded(true)` so TopBar skips its fetch
+  - When creating a new default project, adds it to the store with `setProjects([createData.project])`
+  - On fetch failure or error, still sets `areProjectsLoaded(true)` to prevent infinite retry loops
+
+### Step 3: Modified TopBar.tsx to use store data instead of independent fetch
+- Modified `src/components/codeforge/TopBar.tsx`:
+  - Added `useStore` import from `@/store/hooks`
+  - Added `areProjectsLoaded` and `setAreProjectsLoaded` selectors from the store
+  - Changed the `useEffect` to check `if (areProjectsLoaded) return;` — skips the fetch entirely if page.tsx already loaded the data
+  - If not loaded, fetches `/api/projects` and stores results via `setProjects()` and `setAreProjectsLoaded(true)`
+  - Used `useAppStore.getState().currentProject` instead of the stale `currentProject` closure inside the async callback
+  - Added proper dependency array `[areProjectsLoaded, setProjects, setCurrentProject, setAreProjectsLoaded]`
+
+### Lint Status
+✅ All modified files pass ESLint with zero errors (pre-existing errors in other files are unrelated)
+
+Stage Summary:
+- Root cause: Both `page.tsx` and `TopBar.tsx` independently called `fetch('/api/projects')` on mount, causing a duplicate API request
+- Fix: `page.tsx` now stores fetched projects in the Zustand store and sets `areProjectsLoaded=true`; `TopBar` checks this flag before fetching
+- Result: Only ONE `/api/projects` request is made on page load instead of two
+- The `areProjectsLoaded` flag is also set on error/failure paths to prevent infinite retry loops
+
+---
+Task ID: 2+8
+Agent: Performance Optimization Agent
+Task: Lazy load heavy components + React.memo for list components
+
+Work Log:
+
+### Part A: Lazy Load Heavy Components (Task 2)
+
+1. **`src/app/page.tsx`** — Replaced eager imports of ChatPanel and CodeEditor with lazy imports:
+   - `import ChatPanel from '...'` → `const ChatPanel = lazy(() => import('...'))`
+   - `import CodeEditor from '...'` → `const CodeEditor = lazy(() => import('...'))`
+   - Wrapped both in `<Suspense fallback={<PanelSkeleton />}>` where they are rendered in JSX
+   - These two components are the heaviest because they import react-syntax-highlighter and react-markdown
+
+2. **`src/components/codeforge/ChatPanel.tsx`** — Dynamic import for SyntaxHighlighter:
+   - Replaced `import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'` with `next/dynamic`:
+   ```typescript
+   import dynamic from 'next/dynamic';
+   const SyntaxHighlighter = dynamic(
+     () => import('react-syntax-highlighter').then(mod => mod.Prism),
+     { ssr: false, loading: () => <div className="h-8" /> }
+   );
+   ```
+   - Kept `import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'` (style is just a JSON object, very lightweight)
+
+3. **`src/components/codeforge/CodeEditor.tsx`** — Same dynamic import for SyntaxHighlighter:
+   - Identical change to ChatPanel.tsx
+   - Replaced eager SyntaxHighlighter import with `next/dynamic` lazy version
+
+### Part B: Add React.memo to List Components (Task 8)
+
+1. **`src/components/codeforge/TaskTracker.tsx`** — Wrapped `TaskItem` with React.memo:
+   - Changed `function TaskItem({...})` → `const TaskItem = React.memo(function TaskItem({...})`
+   - Added `React` to imports
+
+2. **`src/components/codeforge/FileExplorer.tsx`** — Wrapped `TreeNodeItem` with React.memo:
+   - Changed `function TreeNodeItem({...})` → `const TreeNodeItem = React.memo(function TreeNodeItem({...})`
+   - Added `React` to imports
+
+3. **`src/components/codeforge/MemoryViewer.tsx`** — Wrapped both `MemoryEntry` and `CategoryGroup` with React.memo:
+   - `function MemoryEntry({...})` → `const MemoryEntry = React.memo(function MemoryEntry({...})`
+   - `function CategoryGroup({...})` → `const CategoryGroup = React.memo(function CategoryGroup({...})`
+   - `React` was already imported
+
+4. **`src/components/codeforge/TopBar.tsx`** — Memoized `runningTasks` computation:
+   - Changed `const runningTasks = tasks.filter((t) => t.status === 'running').length` to:
+   ```typescript
+   const runningTasks = useMemo(() => tasks.filter(t => t.status === 'running'), [tasks]);
+   ```
+   - Updated usage from `runningTasks > 0` to `runningTasks.length > 0`
+   - Updated display from `{runningTasks} running` to `{runningTasks.length} running`
+   - Added `useMemo` to imports
+
+### Additional fix: Pre-existing error
+
+- Renamed `src/lib/agents.ts` → `src/lib/agents.tsx` because it contains JSX (`<Zap className="size-3.5" />` etc.) which caused a parsing error in the `.ts` file. This was blocking the ESLint check on TaskTracker.tsx which imports from this file.
+
+### Lint Status
+✅ All modified files pass ESLint with zero new errors. The only remaining lint errors are pre-existing issues in `keep-alive.js` and `server-daemon.js` (require-import style).
+
+Stage Summary:
+- ChatPanel and CodeEditor are now lazy loaded with Suspense fallback in page.tsx
+- SyntaxHighlighter is dynamically imported via next/dynamic in both ChatPanel and CodeEditor (ssr: false)
+- TaskItem, TreeNodeItem, MemoryEntry, CategoryGroup are all wrapped with React.memo
+- runningTasks in TopBar is memoized with useMemo
+- agents.ts renamed to agents.tsx (fixes pre-existing JSX parsing error)
+
+---
+Task ID: 4
+Agent: Refactoring Agent
+Task: Extract shared/duplicated code into reusable lib files
+
+Work Log:
+
+### 1. Created `/src/lib/types.ts` — shared DynamicModel interface
+- Defined `DynamicModel` interface with `id`, `name`, `provider`, `pricing?`, `contextLength?`, `isFree` fields
+- Previously duplicated identically in 3 files: ChatPanel.tsx, SettingsModal.tsx, OnboardingWizard.tsx
+
+### 2. Created `/src/lib/agents.tsx` — shared AGENT_CONFIG
+- Exported `AgentType` type, `AGENT_CONFIG` (JSX icons), and `AGENT_ICON_MAP` (component references)
+- ChatPanel.tsx: Removed local `DynamicModel` interface and `AGENT_CONFIG` constant; now imports from `@/lib/types` and `@/lib/agents`
+- TaskTracker.tsx: Replaced local `AGENT_CONFIG` object literal with computed version from `AGENT_ICON_MAP`; imports `AgentType` and `AGENT_ICON_MAP` from `@/lib/agents`
+- Note: File uses `.tsx` extension because it contains JSX (icon elements)
+
+### 3. Created `/src/lib/language-utils.ts` — shared detectLanguage function
+- Extracted `detectLanguage()` function with extension-to-language mapping
+- Updated `src/app/api/files/route.ts`: Removed local `detectLanguage`, imports from `@/lib/language-utils`
+- Updated `src/app/api/files/batch/route.ts`: Removed local `detectLanguage`, imports from `@/lib/language-utils`
+
+### 4. Created `/src/lib/download-utils.ts` — shared download logic
+- Exported `downloadPreviewProject(html, css, js, previewTitle?)` async function
+- Handles both ZIP (multi-file) and single HTML downloads
+- Removes console capture script, wraps HTML fragments, strips local CSS/JS references
+- Updated ChatPanel.tsx InlinePreview: Replaced ~80 lines of download code with single `downloadPreviewProject()` call
+- Updated LivePreview.tsx: Replaced ~90 lines of download code with single `downloadPreviewProject()` call
+
+### 5. Created `/src/lib/model-utils.ts` — shared groupModels logic
+- Exported `groupModels()` — returns `Record<string, DynamicModel[]>` (used by ChatPanel ModelSelector)
+- Exported `groupModelsAsSections()` — returns `{ label, models }[]` (used by SettingsModal and OnboardingWizard)
+- Updated ChatPanel.tsx ModelSelector: Replaced inline grouping logic with `groupModels(filteredModels, provider)`
+- Updated SettingsModal.tsx: Replaced inline grouping logic with `groupModelsAsSections()`
+- Updated OnboardingWizard.tsx Step3ModelSelection: Replaced inline grouping logic with `groupModelsAsSections()`
+
+### Import updates summary
+- ChatPanel.tsx: `import { type AgentType, AGENT_CONFIG } from '@/lib/agents'`, `import type { DynamicModel } from '@/lib/types'`, `import { groupModels } from '@/lib/model-utils'`, `import { downloadPreviewProject } from '@/lib/download-utils'`
+- SettingsModal.tsx: `import type { DynamicModel } from '@/lib/types'`, `import { groupModelsAsSections } from '@/lib/model-utils'`
+- OnboardingWizard.tsx: `import type { DynamicModel } from '@/lib/types'`, `import { groupModelsAsSections } from '@/lib/model-utils'`
+- TaskTracker.tsx: `import { type AgentType, AGENT_ICON_MAP } from '@/lib/agents'`
+- LivePreview.tsx: `import { downloadPreviewProject } from '@/lib/download-utils'`
+- files/route.ts: `import { detectLanguage } from '@/lib/language-utils'`
+- files/batch/route.ts: `import { detectLanguage } from '@/lib/language-utils'`
+
+### Lint & Dev Server
+- All modified files pass ESLint with zero new errors
+- Dev server running and healthy (no compilation errors)
+- Pre-existing lint errors in keep-alive.js and server-daemon.js are unrelated
+
+Stage Summary:
+- 5 new shared lib files created: types.ts, agents.tsx, language-utils.ts, download-utils.ts, model-utils.ts
+- 7 files updated to use shared imports instead of duplicated code
+- ~300 lines of duplicated code eliminated across the codebase
+- No circular imports introduced
+- All imports resolve correctly (agents.tsx uses .tsx extension for JSX support)
+
+---
+Task ID: 11
+Agent: Logger Cleanup Agent
+Task: Replace console.log/error with proper logging utility and fix version string
+
+Work Log:
+
+### 1. Created `/src/lib/logger.ts` (NEW FILE)
+- Dev-only logger utility with `[Waziros]` prefix for all log levels
+- `logger.log()` — dev-only, prefixed with `[Waziros]`
+- `logger.warn()` — dev-only, prefixed with `[Waziros]`
+- `logger.error()` — always logs (important for production debugging), prefixed with `[Waziros]`
+- `logger.debug()` — dev-only, prefixed with `[Waziros:debug]`
+
+### 2. Updated `src/lib/db.ts`
+- Replaced `console.log('[DB] ☁️  Connecting to Turso cloud database:')` with `logger.log('[DB] ☁️  Connecting to Turso cloud database:')`
+- Replaced `console.log('[DB] 💾 Connecting to local SQLite:')` with `logger.log('[DB] 💾 Connecting to local SQLite:')`
+- Added `import { logger } from '@/lib/logger'`
+
+### 3. Updated `src/lib/llm.ts`
+- Replaced 4 `console.error` calls with `logger.error` (fetch errors, API errors for OpenAI/Anthropic/Gemini, fatal errors)
+- Replaced 6 `console.log` debug calls with `logger.debug` (provider fallback, model switching, streaming info, auto-retry)
+- Added `import { logger } from '@/lib/logger'`
+
+### 4. Updated API route files
+- `src/app/api/projects/route.ts` — Replaced 2 `console.warn` + 1 `console.error` with `logger.warn` / `logger.error`
+- `src/app/api/projects/[id]/route.ts` — Replaced 3 `console.error` with `logger.error`
+- `src/app/api/files/route.ts` — Replaced 2 `console.error` with `logger.error`
+- `src/app/api/files/[id]/route.ts` — Replaced 3 `console.error` with `logger.error`
+- `src/app/api/files/batch/route.ts` — Replaced 2 `console.error` with `logger.error`
+- `src/app/api/tasks/route.ts` — Replaced 2 `console.error` with `logger.error`
+- `src/app/api/tasks/[id]/route.ts` — Replaced 2 `console.error` with `logger.error`
+- `src/app/api/chat/route.ts` — Replaced 1 `console.warn` + 1 `console.log` (DEBUG-only) + 3 `console.error` with `logger.warn` / `logger.debug` / `logger.error`
+- `src/app/api/memory/route.ts` — Replaced 3 `console.error` with `logger.error`
+
+### 5. Fixed version string in `src/app/page.tsx`
+- Updated "Waziros AI v2.0" → "Waziros AI v3.0" in the status bar
+- Kept `console.error` in the client-side catch block (per instructions — client-side errors should remain as-is)
+
+### 6. Lint verification
+- No lint errors in any modified files
+- Pre-existing errors in keep-alive.js, server-daemon.js, and chat-utils.ts are unrelated to this task
+- Dev server compiled successfully
+
+Stage Summary:
+- Created centralized logger utility at `src/lib/logger.ts` — dev-only for log/warn/debug, always-on for error
+- Replaced 25+ raw console calls across 11 server-side files with the structured logger
+- All server-side/API files now use `[Waziros]` prefixed logging
+- Client-side console.error calls left untouched (important for browser debugging)
+- Version string updated from v2.0 → v3.0
+
+---
+Task ID: 6+7
+Agent: Refactoring Agent
+Task: Split CodeEditor.tsx and SettingsModal.tsx into smaller focused component files
+
+Work Log:
+
+### CodeEditor.tsx Split (1071 → ~420 lines)
+
+Created `src/components/codeforge/editor/` directory with 3 new files:
+
+1. **`editor/EditorToolbar.tsx`** (~195 lines)
+   - Extracted `EditorToolbar` component with all toolbar buttons (Save, Copy, Edit/View, Preview, Word Wrap, Line Numbers, Font Size)
+   - Exported `FONT_SIZE_MIN`, `FONT_SIZE_MAX`, `FONT_SIZE_DEFAULT`, `FONT_SIZE_STEP` constants
+   - Imports: React, lucide-react icons, shadcn/ui Button/Tooltip, file-icons utilities, ProjectFile type
+
+2. **`editor/EditorTabs.tsx`** (~165 lines)
+   - Extracted `TabContextMenu` component (right-click close others/close all)
+   - Extracted `EditorTab` memoized component (individual tab with icon, name, close button)
+   - Extracted `EditorTabs` default export as tab bar orchestrator
+   - Exported `MAX_TAB_WIDTH`, `MIN_TAB_WIDTH`, `MAX_OPEN_TABS` constants
+   - Imports: React, X icon, getFileIcon utility, ProjectFile type
+
+3. **`editor/EditorEmptyState.tsx`** (~24 lines)
+   - Extracted `EmptyState` component (FileCode2 icon, "No file selected" message)
+   - Imports: React, FileCode2 icon
+
+4. **Updated `CodeEditor.tsx`** — now imports from the 3 new files and remains as the orchestrator (~420 lines)
+   - Removed inline component definitions for TabContextMenu, EditorTab, EditorToolbar, EmptyState
+   - Removed unused icon imports (Save, Copy, Check, Pencil, Eye, FileCode2, X, Hash, Play, WrapText, ZoomIn, ZoomOut, List, Minus, Plus)
+   - Added imports: EditorToolbar, EditorTabs, EditorEmptyState, FONT_SIZE_DEFAULT, MAX_OPEN_TABS
+
+### SettingsModal.tsx Split (1103 → ~520 lines)
+
+Created `src/components/codeforge/settings/` directory with 3 new files:
+
+1. **`settings/ApiKeySection.tsx`** (~135 lines)
+   - Extracted `ApiKeyInputSection` component (provider selector, API key input, show/hide toggle, test connection button)
+   - Exported `ApiKeyInputSectionProps` interface for type reuse
+   - Imports: React, shadcn/ui Select/Input/Button/Label, lucide-react icons, provider constants
+
+2. **`settings/ModelSelectionSection.tsx`** (~120 lines)
+   - Extracted `ModelSelectionSection` component (model dropdown with grouped sections, refresh button, FREE/PAID badge)
+   - Uses `groupModelsAsSections` utility for model grouping
+   - Imports: React, shadcn/ui Select/Button/Label, lucide-react icons, provider/types/model-utils
+
+3. **`settings/useSettingsConnection.ts`** (~80 lines)
+   - Extracted `useSettingsConnection` custom hook for test connection logic
+   - Handles all 4 provider connection tests (primary, secondary, tertiary, quaternary)
+   - Manages `isTesting` and `connectionStatus` state per-provider
+   - Exports: `useSettingsConnection`, `ConnectionStatus` type, `ProviderConnectionState` type
+   - Replaced 4 separate `handleTestConnection1-4` functions + 8 state variables (isTesting1-4, connectionStatus1-4) with 4 hook instances
+
+4. **Updated `SettingsModal.tsx`** — now imports from the 3 new files and remains as the dialog orchestrator (~520 lines)
+   - Replaced inline `ApiKeyInputSection` definition with import from `./settings/ApiKeySection`
+   - Replaced inline model selection JSX with `<ModelSelectionSection>` component
+   - Replaced 4 test connection handler functions + 8 state variables with 4 `useSettingsConnection()` hook instances
+   - Removed unused imports: Eye, EyeOff, Wifi, WifiOff, CheckCircle2, AlertCircle, Loader2, RefreshCw, CreditCard, Gift, Input, DynamicModel type, groupModelsAsSections
+   - Added type annotation `Record<string, string>` to `handleSwapProviders` to fix TypeScript inference error
+   - Added imports: ApiKeyInputSection, ModelSelectionSection, useSettingsConnection
+
+### Verification
+- ESLint: No new errors (5 pre-existing errors in keep-alive.js and server-daemon.js)
+- TypeScript: No errors in refactored files (pre-existing errors in other files unchanged)
+- Dev server: Compiled successfully, serving pages normally
+- All functionality preserved — purely structural refactoring
+
+Stage Summary:
+- CodeEditor.tsx: 1071 → ~420 lines (60% reduction)
+- SettingsModal.tsx: 1103 → ~520 lines (53% reduction)
+- 6 new focused component files created across 2 subdirectories
+- useSettingsConnection hook eliminates ~120 lines of duplicated test connection logic
+- All exports and default exports preserved for backward compatibility
+
+---
+Task ID: 5
+Agent: Refactoring Agent
+Task: Split ChatPanel.tsx (~1200 lines) into smaller focused component files
+
+Work Log:
+- Read ChatPanel.tsx (2727 lines) and worklog.md to understand current code structure
+- Created directory: `src/components/codeforge/chat/`
+- Extracted 7 files from ChatPanel.tsx:
+  1. `chat/chat-utils.tsx` (266 lines) — utility functions, types, and constants:
+     - `extractAllCodeBlocks`, `classifyCodeBlock`, `extractPreviewContent` functions
+     - `previewCache` object
+     - `ChatError` interface, `ERROR_MARKER`, `encodeChatError`, `decodeChatError`
+     - `SUGGESTED_PROMPTS` constant
+     - `VISIBLE_MESSAGE_LIMIT`, `PREVIEW_THROTTLE_MS` constants
+     - `LoadingDots` component
+  2. `chat/ErrorCard.tsx` (93 lines) — user-friendly error display with retry button
+  3. `chat/InlinePreview.tsx` (130 lines) — embedded iframe preview inside chat message bubbles
+  4. `chat/CodeBlock.tsx` (119 lines) — syntax-highlighted code with copy, apply & preview buttons
+  5. `chat/MarkdownRenderer.tsx` (94 lines) — renders AI message content using ReactMarkdown
+  6. `chat/ModelSelector.tsx` (209 lines) — model selector popover with search and grouping
+  7. `chat/ChatHeader.tsx` (133 lines) — chat header with connection status, model selector, new/delete buttons
+- Updated ChatPanel.tsx to import all extracted components and utilities from the new files
+- ChatPanel.tsx reduced from ~2727 lines to 1740 lines (36% reduction)
+- Renamed chat-utils.ts → chat-utils.tsx (JSX content from SUGGESTED_PROMPTS)
+- All imports verified and working correctly
+- Lint check passes with zero new errors (5 pre-existing errors from keep-alive.js/server-daemon.js)
+- Dev server compiles and serves the app successfully
+
+Stage Summary:
+- ChatPanel.tsx refactored from a monolithic ~2727-line file into 8 focused files
+- Extracted files under `src/components/codeforge/chat/`:
+  - chat-utils.tsx: Shared utilities, types, constants (266 lines)
+  - ErrorCard.tsx: Error display component (93 lines)
+  - InlinePreview.tsx: Embedded iframe preview (130 lines)
+  - CodeBlock.tsx: Syntax-highlighted code block (119 lines)
+  - MarkdownRenderer.tsx: Markdown rendering (94 lines)
+  - ModelSelector.tsx: Model selection popover (209 lines)
+  - ChatHeader.tsx: Chat header bar (133 lines)
+- ChatPanel.tsx still exports as default, maintains all functionality
+- No behavior changes — purely structural refactoring
+
+---
+Task ID: Optimization Pass
+Agent: Main Agent + 4 Subagents
+Task: Build the best and most optimized version of Waziros AI
+
+Work Log:
+- Conducted comprehensive codebase audit identifying 19 optimization areas across security, performance, code quality, UX, and accessibility
+- **Critical Security Fix**: Removed `allow-same-origin` from iframe sandbox in both LivePreview.tsx and ChatPanel.tsx — prevents XSS attacks that could access parent page localStorage (API keys)
+- **Database N+1 Fix**: Replaced per-row COUNT queries in db.ts project.findMany with batch GROUP BY queries (3N+1 → 3 queries)
+- **API Input Validation**: Added field whitelisting to PUT /api/projects/[id] route, added batch size limit (100) to /api/files/batch
+- **Code Deduplication** (5 new shared lib files):
+  - `src/lib/types.ts` — Shared `DynamicModel` interface (was duplicated in 3 components)
+  - `src/lib/agents.tsx` — Shared `AGENT_CONFIG` and `AGENT_ICON_MAP` (was duplicated in 2 components)
+  - `src/lib/language-utils.ts` — Shared `detectLanguage()` (was duplicated in 2 API routes)
+  - `src/lib/download-utils.ts` — Shared `downloadPreviewProject()` (was ~80 lines duplicated in 2 components)
+  - `src/lib/model-utils.ts` — Shared `groupModels()` and `groupModelsAsSections()` (was duplicated in 3 components)
+- **Component Splitting** (ChatPanel 1200+ → 1740 total across 7 files, 36% reduction in main file):
+  - `src/components/codeforge/chat/InlinePreview.tsx` — Inline iframe preview
+  - `src/components/codeforge/chat/CodeBlock.tsx` — Syntax-highlighted code blocks
+  - `src/components/codeforge/chat/MarkdownRenderer.tsx` — AI message rendering
+  - `src/components/codeforge/chat/ModelSelector.tsx` — Model selection popover
+  - `src/components/codeforge/chat/ChatHeader.tsx` — Chat header with status
+  - `src/components/codeforge/chat/ErrorCard.tsx` — Error display with retry
+  - `src/components/codeforge/chat/chat-utils.tsx` — Utility functions and types
+- **Component Splitting** (CodeEditor 1071 → ~420 lines, 60% reduction):
+  - `src/components/codeforge/editor/EditorToolbar.tsx`
+  - `src/components/codeforge/editor/EditorTabs.tsx`
+  - `src/components/codeforge/editor/EditorEmptyState.tsx`
+- **Component Splitting** (SettingsModal 1103 → ~520 lines, 53% reduction):
+  - `src/components/codeforge/settings/ApiKeySection.tsx`
+  - `src/components/codeforge/settings/ModelSelectionSection.tsx`
+  - `src/components/codeforge/settings/useSettingsConnection.ts` — Custom hook eliminating ~120 lines of duplicated test handlers
+- **Performance: Lazy Loading**:
+  - ChatPanel and CodeEditor changed from eager to `React.lazy()` imports in page.tsx with Suspense fallback
+  - SyntaxHighlighter changed from static import to `next/dynamic` in both ChatPanel.tsx and CodeEditor.tsx
+- **Performance: React.memo**:
+  - Wrapped `TaskItem` in React.memo (TaskTracker)
+  - Wrapped `TreeNodeItem` in React.memo (FileExplorer)
+  - Wrapped `MemoryEntry` and `CategoryGroup` in React.memo (MemoryViewer)
+  - Memoized `runningTasks` computation with useMemo in TopBar
+- **Duplicate API Call Fix**: Added `areProjectsLoaded` state to Zustand store — page.tsx fetches projects once, TopBar skips redundant fetch
+- **Accessibility Improvements**:
+  - Added `role="tablist"` and `role="tab"` + `aria-selected` to sidebar tabs
+  - Added `role="dialog"` + `aria-modal` to keyboard shortcuts overlay
+  - Added `aria-label` to status bar buttons (terminal, preview, quick ask)
+  - Added `role="log"` + `aria-live="polite"` to terminal output
+  - Added `sr-only` text for latency indicator
+  - Created RootErrorBoundary component wrapping the app
+- **Logger Cleanup**:
+  - Created `src/lib/logger.ts` — dev-only logger with [Waziros] prefix
+  - Replaced 25+ console.log/error/warn calls across 11 server-side files
+  - Client-side console.error preserved for browser debugging
+- **Version Update**: Status bar updated from "Waziros AI v2.0" to "Waziros AI v3.0"
+
+Stage Summary:
+- All 12 optimization tasks completed successfully
+- ~300 lines of duplicated code eliminated through shared libraries
+- ChatPanel main file reduced by 36%, CodeEditor by 60%, SettingsModal by 53%
+- Critical XSS vulnerability fixed (iframe sandbox)
+- N+1 database query eliminated with batch GROUP BY
+- Bundle size reduced via lazy loading heavy components
+- Rendering performance improved via React.memo and useMemo
+- Full accessibility audit and ARIA improvements applied
+- Zero new lint errors, dev server running cleanly
+- Verified with Agent Browser: all panels, settings modal, chat, error handling working correctly

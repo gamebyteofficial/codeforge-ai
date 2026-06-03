@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAppStore, type Task } from '@/store';
 import { useTaskState, useProjectState } from '@/store/hooks';
+import { type AgentType, AGENT_ICON_MAP } from '@/lib/agents';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -51,7 +52,6 @@ import {
 // ---------------------------------------------------------------------------
 
 type TaskStatus = Task['status'];
-type AgentType = 'planner' | 'coder' | 'debugger' | 'reviewer' | 'documenter';
 type FilterKey = 'all' | TaskStatus;
 
 const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
@@ -65,38 +65,18 @@ const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
 const AGENT_CONFIG: Record<
   AgentType,
   { icon: typeof Brain; label: string; color: string; bgClass: string }
-> = {
-  planner: {
-    icon: Brain,
-    label: 'Planner',
-    color: 'text-purple-400',
-    bgClass: 'bg-purple-500/20',
-  },
-  coder: {
-    icon: Code,
-    label: 'Coder',
-    color: 'text-emerald-400',
-    bgClass: 'bg-emerald-500/20',
-  },
-  debugger: {
-    icon: Bug,
-    label: 'Debugger',
-    color: 'text-red-400',
-    bgClass: 'bg-red-500/20',
-  },
-  reviewer: {
-    icon: Search,
-    label: 'Reviewer',
-    color: 'text-amber-400',
-    bgClass: 'bg-amber-500/20',
-  },
-  documenter: {
-    icon: FileText,
-    label: 'Documenter',
-    color: 'text-sky-400',
-    bgClass: 'bg-sky-500/20',
-  },
-};
+> = Object.fromEntries(
+  (Object.entries(AGENT_ICON_MAP) as [AgentType, typeof Brain][]).map(([key, IconComp]) => {
+    const entry = {
+      planner:    { label: 'Planner',     color: 'text-purple-400',  bgClass: 'bg-purple-500/20' },
+      coder:      { label: 'Coder',       color: 'text-emerald-400', bgClass: 'bg-emerald-500/20' },
+      debugger:   { label: 'Debugger',    color: 'text-red-400',     bgClass: 'bg-red-500/20' },
+      reviewer:   { label: 'Reviewer',    color: 'text-amber-400',   bgClass: 'bg-amber-500/20' },
+      documenter: { label: 'Documenter',  color: 'text-sky-400',     bgClass: 'bg-sky-500/20' },
+    }[key];
+    return [key, { icon: IconComp, ...entry }];
+  })
+) as Record<AgentType, { icon: typeof Brain; label: string; color: string; bgClass: string }>;
 
 const STATUS_CONFIG: Record<
   TaskStatus,
@@ -148,7 +128,7 @@ function getAgentConfig(agent?: string) {
 // TaskItem component
 // ---------------------------------------------------------------------------
 
-function TaskItem({
+const TaskItem = React.memo(function TaskItem({
   task,
   isExpanded,
   onToggle,
@@ -318,11 +298,10 @@ function TaskItem({
       </AnimatePresence>
     </motion.div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // EmptyState
-// ---------------------------------------------------------------------------
 
 function EmptyState({ filter }: { filter: FilterKey }) {
   if (filter !== 'all') {

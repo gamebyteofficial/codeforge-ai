@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   File,
@@ -123,7 +123,7 @@ function buildTree(files: ProjectFile[]): TreeNode[] {
 // TreeNodeItem component
 // ---------------------------------------------------------------------------
 
-function TreeNodeItem({
+const TreeNodeItem = React.memo(function TreeNodeItem({
   node,
   depth,
   currentFile,
@@ -330,7 +330,7 @@ function TreeNodeItem({
       </AnimatePresence>
     </>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // InlineCreationInput – used for creating new files/folders inline
