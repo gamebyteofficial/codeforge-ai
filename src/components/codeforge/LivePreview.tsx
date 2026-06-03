@@ -356,14 +356,17 @@ export default function LivePreview() {
         }
       }
 
-      // Inject inline JS right before </body>
+      // Inject inline JS — must NOT wrap in try/catch because that creates a
+      // block scope, which prevents function declarations from being global
+      // (breaking onclick="myFunction()" handlers in the HTML).
       if (js) {
-        const scriptBlock = `\n<script>\ntry {\n${js}\n} catch(e) {\n  document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';\n}\n</script>`;
+        // Add a visual error display handler (doesn't wrap user code)
+        const errorHandler = `\n<script>\nwindow.addEventListener('error',function(e){\n  var d=document.createElement('div');\n  d.style.cssText='color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;';\n  d.textContent='Error: '+(e.message||'Unknown error');\n  document.body.appendChild(d);\n});\n</script>`;
+        const scriptBlock = `\n<script>\n${js}\n</script>`;
         if (/<\/body>/i.test(doc)) {
-          doc = doc.replace(/<\/body>/i, `${scriptBlock}\n</body>`);
+          doc = doc.replace(/<\/body>/i, `${errorHandler}${scriptBlock}\n</body>`);
         } else {
-          // No </body>, append before </html>
-          doc = doc.replace(/<\/html>/i, `${scriptBlock}\n</html>`);
+          doc = doc.replace(/<\/html>/i, `${errorHandler}${scriptBlock}\n</html>`);
         }
       }
 
@@ -381,7 +384,7 @@ export default function LivePreview() {
 </head>
 <body>
   ${cleanedHtml}
-  ${js ? `<script>\ntry {\n${js}\n} catch(e) {\n  document.body.innerHTML += '<div style="color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;">Error: ' + e.message + '</div>';\n}\n</script>` : ''}
+  ${js ? `<script>\nwindow.addEventListener('error',function(e){var d=document.createElement('div');d.style.cssText='color:red;padding:10px;font-family:monospace;background:rgba(255,0,0,0.1);border-top:1px solid red;margin-top:10px;';d.textContent='Error: '+(e.message||'Unknown error');document.body.appendChild(d);});\n</script>\n<script>\n${js}\n</script>` : ''}
 </body>
 </html>`;
   }, []);
